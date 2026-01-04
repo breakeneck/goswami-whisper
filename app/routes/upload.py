@@ -105,13 +105,9 @@ def upload():
             try:
                 text_to_embed = transcription.formatted_text or transcription.raw_text
                 if text_to_embed:
-                    EmbeddingService.add_document(
+                    EmbeddingService.index_transcription(
                         transcription_id=transcription.id,
-                        text=text_to_embed,
-                        metadata={
-                            'filename': transcription.filename,
-                            'source_url': transcription.source_url
-                        }
+                        text=text_to_embed
                     )
                 transcription.status = 'completed'
                 db.session.commit()
