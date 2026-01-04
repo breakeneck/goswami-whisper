@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Goswami Whisper{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Welcome Section -->
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <h1 class="display-5 mb-3">
+                    <i class="bi bi-mic-fill text-primary"></i> Goswami Whisper
+                </h1>
+                <p class="lead text-muted mb-4">
+                    Transcribe, format, and search Vedic lectures with AI-powered tools
+                </p>
+                <a href="{{ url_for('upload.upload') }}" class="btn btn-primary btn-lg">
+                    <i class="bi bi-upload me-2"></i>Upload New Recording
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- Features Section -->
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-soundwave display-4 text-primary mb-3"></i>
+                <h5>Whisper Transcription</h5>
+                <p class="text-muted">Accurate speech-to-text using OpenAI Whisper</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-magic display-4 text-primary mb-3"></i>
+                <h5>AI Formatting</h5>
+                <p class="text-muted">Intelligent formatting with GPT-4 for Vedic texts</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <i class="bi bi-search display-4 text-primary mb-3"></i>
+                <h5>Semantic Search</h5>
+                <p class="text-muted">Find lectures using LaBSE vector embeddings</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Transcriptions -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-clock-history me-2"></i>Recent Transcriptions
+                </h5>
+            </div>
+            <div class="card-body">
+                {% if recent_transcriptions %}
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Source</th>
+                                    <th>Status</th>
+                                    <th>Created</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for t in recent_transcriptions %}
+                                <tr>
+                                    <td>
+                                        {% if t.filename %}
+                                            <i class="bi bi-file-earmark-music me-1"></i>
+                                            {{ t.filename[:50] }}{% if t.filename|length > 50 %}...{% endif %}
+                                        {% elif t.source_url %}
+                                            <i class="bi bi-link-45deg me-1"></i>
+                                            {{ t.source_url[:50] }}{% if t.source_url|length > 50 %}...{% endif %}
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if t.status == 'completed' %}
+                                            <span class="badge bg-success">{{ t.status }}</span>
+                                        {% elif t.status == 'error' %}
+                                            <span class="badge bg-danger">{{ t.status }}</span>
+                                        {% else %}
+                                            <span class="badge bg-warning">{{ t.status }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>{{ t.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>
+                                        <a href="{{ url_for('main.view_transcription', id=t.id) }}"
+                                           class="btn btn-sm btn-outline-primary">
+                                            <i class="bi bi-eye"></i> View
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                {% else %}
+                    <div class="text-center py-4 text-muted">
+                        <i class="bi bi-inbox display-4"></i>
+                        <p class="mt-2">No transcriptions yet. Upload your first recording!</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

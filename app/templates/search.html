@@ -1,0 +1,102 @@
+{% extends "base.html" %}
+
+{% block title %}Search - Goswami Whisper{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <!-- Search Box -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <form action="{{ url_for('search.search') }}" method="GET">
+                    <div class="input-group input-group-lg">
+                        <span class="input-group-text bg-white">
+                            <i class="bi bi-search"></i>
+                        </span>
+                        <input type="search" class="form-control" name="q"
+                               placeholder="Search transcriptions using semantic search..."
+                               value="{{ query }}" autofocus>
+                        <button class="btn btn-primary" type="submit">Search</button>
+                    </div>
+                    <div class="form-text mt-2">
+                        <i class="bi bi-info-circle me-1"></i>
+                        Using LaBSE embeddings for multilingual semantic search
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Results -->
+        {% if query %}
+            <h5 class="mb-3">
+                <i class="bi bi-list-ul me-2"></i>
+                Search Results for "{{ query }}"
+                <span class="badge bg-secondary ms-2">{{ results|length }} found</span>
+            </h5>
+
+            {% if results %}
+                {% for result in results %}
+                <div class="card mb-3 transcription-card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-start mb-2">
+                            <h5 class="card-title mb-0">
+                                <a href="{{ url_for('main.view_transcription', id=result.transcription.id) }}"
+                                   class="text-decoration-none">
+                                    {% if result.transcription.filename %}
+                                        <i class="bi bi-file-earmark-music me-1"></i>
+                                        {{ result.transcription.filename }}
+                                    {% elif result.transcription.source_url %}
+                                        <i class="bi bi-link-45deg me-1"></i>
+                                        {{ result.transcription.source_url[:60] }}...
+                                    {% else %}
+                                        Transcription #{{ result.transcription.id }}
+                                    {% endif %}
+                                </a>
+                            </h5>
+                            {% if result.score is not none %}
+                                <span class="badge score-badge">
+                                    <i class="bi bi-graph-up me-1"></i>
+                                    {{ "%.1f"|format(result.score * 100) }}% match
+                                </span>
+                            {% endif %}
+                        </div>
+
+                        <p class="card-text text-muted text-preview">
+                            {{ result.snippet }}
+                        </p>
+
+                        <div class="d-flex justify-content-between align-items-center">
+                            <small class="text-muted">
+                                <i class="bi bi-calendar me-1"></i>
+                                {{ result.transcription.created_at.strftime('%Y-%m-%d %H:%M') }}
+                            </small>
+                            <a href="{{ url_for('main.view_transcription', id=result.transcription.id) }}"
+                               class="btn btn-sm btn-outline-primary">
+                                <i class="bi bi-eye me-1"></i>View Full Text
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            {% else %}
+                <div class="card">
+                    <div class="card-body text-center py-5">
+                        <i class="bi bi-search display-4 text-muted"></i>
+                        <h5 class="mt-3">No results found</h5>
+                        <p class="text-muted">Try different keywords or upload more transcriptions</p>
+                    </div>
+                </div>
+            {% endif %}
+        {% else %}
+            <div class="card">
+                <div class="card-body text-center py-5">
+                    <i class="bi bi-search display-4 text-muted"></i>
+                    <h5 class="mt-3">Enter a search query</h5>
+                    <p class="text-muted">Search through your transcribed lectures using semantic search</p>
+                </div>
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+

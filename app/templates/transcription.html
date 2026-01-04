@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block title %}Transcription #{{ transcription.id }} - Goswami Whisper{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <!-- Header -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h4 class="mb-0">
+                    <i class="bi bi-file-text me-2"></i>Transcription #{{ transcription.id }}
+                </h4>
+                <span class="badge
+                    {% if transcription.status == 'completed' %}bg-success
+                    {% elif transcription.status == 'error' %}bg-danger
+                    {% else %}bg-warning{% endif %}">
+                    {{ transcription.status }}
+                </span>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <p><strong>Source:</strong>
+                            {% if transcription.filename %}
+                                <i class="bi bi-file-earmark-music me-1"></i>{{ transcription.filename }}
+                            {% endif %}
+                            {% if transcription.source_url %}
+                                <i class="bi bi-link-45deg me-1"></i>
+                                <a href="{{ transcription.source_url }}" target="_blank">{{ transcription.source_url[:50] }}...</a>
+                            {% endif %}
+                        </p>
+                    </div>
+                    <div class="col-md-6">
+                        <p><strong>Created:</strong> {{ transcription.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+                    </div>
+                </div>
+                {% if transcription.error_message %}
+                    <div class="alert alert-warning">
+                        <i class="bi bi-exclamation-triangle me-2"></i>
+                        {{ transcription.error_message }}
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Formatted Text (Primary) -->
+        {% if transcription.formatted_text %}
+        <div class="card mb-4">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0">
+                    <i class="bi bi-magic me-2"></i>Formatted Text (AI Enhanced)
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="formatted-text" style="white-space: pre-wrap; line-height: 1.8;">{{ transcription.formatted_text }}</div>
+            </div>
+            <div class="card-footer">
+                <button class="btn btn-outline-primary btn-sm" onclick="copyText('formatted')">
+                    <i class="bi bi-clipboard me-1"></i>Copy to Clipboard
+                </button>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Raw Text -->
+        {% if transcription.raw_text %}
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">
+                    <i class="bi bi-file-text me-2"></i>Raw Transcription
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="raw-text" style="white-space: pre-wrap; line-height: 1.6; color: #666;">{{ transcription.raw_text }}</div>
+            </div>
+            <div class="card-footer">
+                <button class="btn btn-outline-secondary btn-sm" onclick="copyText('raw')">
+                    <i class="bi bi-clipboard me-1"></i>Copy to Clipboard
+                </button>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Actions -->
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('main.index') }}" class="btn btn-outline-primary">
+                <i class="bi bi-arrow-left me-1"></i>Back to Home
+            </a>
+            <a href="{{ url_for('upload.upload') }}" class="btn btn-primary">
+                <i class="bi bi-upload me-1"></i>Upload Another
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+    function copyText(type) {
+        let text;
+        if (type === 'formatted') {
+            text = document.querySelector('.formatted-text').textContent;
+        } else {
+            text = document.querySelector('.raw-text').textContent;
+        }
+
+        navigator.clipboard.writeText(text).then(function() {
+            alert('Text copied to clipboard!');
+        }).catch(function(err) {
+            console.error('Could not copy text: ', err);
+        });
+    }
+</script>
+{% endblock %}
+
