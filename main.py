@@ -24,7 +24,7 @@ if __name__ == '__main__':
     print("Goswami Whisper - Vedic Lecture Transcription System")
     print("=" * 60)
     print("\nMake sure MySQL is running: docker-compose up -d")
-    print("Access the web interface at: http://localhost:5000")
+    print("Access the web interface at: http://localhost:5003")
     print("\n" + "=" * 60)
 
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5003, debug=True)
