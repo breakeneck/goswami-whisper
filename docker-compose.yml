@@ -1,0 +1,25 @@
+version: '3.8'
+  mysql_data:
+volumes:
+
+      retries: 10
+      timeout: 20s
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+    healthcheck:
+    command: --default-authentication-plugin=mysql_native_password
+      - mysql_data:/var/lib/mysql
+    volumes:
+      - "3306:3306"
+    ports:
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-goswamipassword}
+      MYSQL_USER: ${MYSQL_USER:-goswami}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-goswami_whisper}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-rootpassword}
+    environment:
+    restart: unless-stopped
+    container_name: goswami-mysql
+    image: mysql:8.0
+  mysql:
+services:
+
+

@@ -1,0 +1,52 @@
+# Python
+*.sqlite
+*.db
+# Database
+
+Thumbs.db
+.DS_Store
+# OS files
+
+*.log
+# Logs
+
+chroma_db/
+uploads/
+# Uploads and data
+
+.env
+# Environment files
+
+*.swo
+*.swp
+.vscode/
+.idea/
+# IDE
+
+.venv/
+env/
+ENV/
+venv/
+# Virtual Environment
+
+*.egg
+.installed.cfg
+*.egg-info/
+wheels/
+var/
+sdist/
+parts/
+lib64/
+lib/
+.eggs/
+eggs/
+downloads/
+dist/
+develop-eggs/
+build/
+.Python
+*.so
+*$py.class
+*.py[cod]
+__pycache__/
+
