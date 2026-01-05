@@ -1,10 +1,40 @@
 import os
 import subprocess
-import threading
 import time
+from unittest.mock import patch
 
 import whisper
 import yt_dlp
+import tqdm.std
+
+
+class TqdmProgressTracker:
+    """Wrapper to capture tqdm progress from Whisper's internal processing."""
+
+    def __init__(self, callback=None):
+        self.callback = callback
+        self.current_progress = 0.0
+        self._original_tqdm = tqdm.std.tqdm
+
+    def create_wrapper(self):
+        """Create a tqdm wrapper class that reports progress."""
+        tracker = self
+        original_tqdm = self._original_tqdm
+
+        class ProgressTqdm(original_tqdm):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+            def update(self, n=1):
+                result = super().update(n)
+                if self.total and self.total > 0:
+                    progress = (self.n / self.total) * 100
+                    tracker.current_progress = progress
+                    if tracker.callback:
+                        tracker.callback(progress)
+                return result
+
+        return ProgressTqdm
 class WhisperService:
     """Service for transcribing audio/video files using Whisper."""
     VALID_MODELS = ['tiny', 'base', 'small', 'medium', 'large']
@@ -165,21 +195,6 @@ class WhisperService:
         # Get audio duration for progress tracking
         duration = WhisperService.get_audio_duration(file_path)
 
-        # Speed factors for different models (approximate processing time relative to audio duration)
-        # These are calibrated for modern GPU/CPU - actual transcription is very fast
-        # For a 70-min file, we want progress to feel smooth even if it only takes 30-60 seconds
-        speed_factors = {
-            'tiny': 0.005,   # ~20 seconds for 70 min file
-            'base': 0.01,    # ~40 seconds for 70 min file
-            'small': 0.02,   # ~80 seconds for 70 min file
-            'medium': 0.05,  # ~3.5 min for 70 min file
-            'large': 0.1     # ~7 min for 70 min file
-        }
-        speed_factor = speed_factors.get(model_name, 0.01)
-        # Minimum estimated duration is 15 seconds to handle short files
-        # This gives smoother progress for fast transcriptions
-        estimated_duration = max(15.0, duration * speed_factor) if duration > 0 else 30
-
         # Update initial duration in database
         if transcription_id and app:
             WhisperService._update_progress_in_db(
@@ -191,61 +206,38 @@ class WhisperService:
         # Load local Whisper model
         print(f"Loading local Whisper model: {model_name}")
 
-        # Track model loading time for progress calculation
         model_load_start = time.time()
         model = whisper.load_model(model_name)
         model_load_time = time.time() - model_load_start
         print(f"Model loaded in {model_load_time:.1f}s")
 
-        # Add model load time to estimated duration
-        total_estimated_duration = estimated_duration + model_load_time
+        # Create progress tracker that captures real tqdm progress from Whisper
+        last_db_progress = [0.0]  # Use list to allow modification in nested function
 
-        # Progress tracking in background thread
-        progress_stop_event = threading.Event()
-
-        def update_progress():
-            """Update progress based on estimated time."""
-            print(f"Local Whisper progress thread started: transcription_id={transcription_id}, app={app is not None}")
-            if not transcription_id or not app:
-                print("Progress thread exiting early - no transcription_id or app")
-                return
-            start_time = time.time()
-            last_progress = 0.0
-            # Adaptive update interval: faster updates for shorter estimated durations
-            update_interval = max(0.3, min(2.0, total_estimated_duration / 50))
-            print(f"Progress update interval: {update_interval:.1f}s, estimated duration: {total_estimated_duration:.1f}s")
-
-            while not progress_stop_event.is_set():
-                elapsed = time.time() - start_time
-                # Linear progress up to 95%, capped
-                raw_progress = (elapsed / total_estimated_duration) * 100
-                progress = min(95.0, raw_progress)
-
-                # Update if progress increased by at least 1% or 0.5 seconds have passed
-                if progress - last_progress >= 1.0:
-                    if duration > 0:
-                        current_pos = min(duration * 0.95, (progress / 100.0) * duration)
-                    else:
-                        current_pos = 0.0
+        def on_progress(progress):
+            """Callback when tqdm progress updates."""
+            # Only update DB when progress changes by at least 2%
+            if progress - last_db_progress[0] >= 2.0:
+                if transcription_id and app:
+                    current_pos = (progress / 100.0) * duration if duration > 0 else 0.0
                     WhisperService._update_progress_in_db(
                         app, transcription_id, progress,
                         current_pos=current_pos,
                         status_check='transcribing'
                     )
-                    last_progress = progress
-                time.sleep(update_interval)
+                    last_db_progress[0] = progress
 
-        # Start progress tracking thread
-        progress_thread = threading.Thread(target=update_progress, daemon=True)
-        progress_thread.start()
+        progress_tracker = TqdmProgressTracker(callback=on_progress)
 
-        # Transcribe using local Whisper
+        # Transcribe using local Whisper with progress tracking
         try:
             print(f"Starting local Whisper transcription for: {file_path}")
-            result = model.transcribe(file_path, verbose=False)
-        finally:
-            progress_stop_event.set()
-            progress_thread.join(timeout=2)
+            # Patch tqdm to capture Whisper's internal progress
+            with patch.object(tqdm.std, 'tqdm', progress_tracker.create_wrapper()):
+                result = model.transcribe(file_path, verbose=False)
+        except Exception as e:
+            print(f"Transcription error: {e}")
+            raise
 
         # Final progress update
         if transcription_id and app:
