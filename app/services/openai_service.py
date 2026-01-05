@@ -1,21 +1,28 @@
 from openai import OpenAI
+from anthropic import Anthropic
 from flask import current_app
 
 
 class OpenAIService:
-    """Service for formatting text using OpenAI GPT models."""
+    """Service for formatting text using LLM models (Claude or GPT)."""
 
     @staticmethod
-    def get_client() -> OpenAI:
+    def get_openai_client() -> OpenAI:
         """Get OpenAI client with API key from config."""
         return OpenAI(api_key=current_app.config.get('OPENAI_API_KEY'))
 
     @staticmethod
+    def get_anthropic_client() -> Anthropic:
+        """Get Anthropic client with API key from config."""
+        return Anthropic(api_key=current_app.config.get('ANTHROPIC_API_KEY'))
+
+    @staticmethod
     def format_text(raw_text: str) -> str:
         """
-        Format raw transcription text using OpenAI GPT-4.
+        Format raw transcription text using Claude or GPT.
 
         Adds proper punctuation, paragraphs, and formatting for readability.
+        Uses Claude by default due to larger context window (200K tokens).
 
         Args:
             raw_text: Raw transcription text
@@ -26,7 +33,7 @@ class OpenAIService:
         if not raw_text:
             return ""
 
-        client = OpenAIService.get_client()
+        provider = current_app.config.get('LLM_PROVIDER', 'anthropic')
 
         prompt = """Please format the following transcription for readability:
 1. Add proper punctuation and capitalization
@@ -37,6 +44,35 @@ class OpenAIService:
 
 Transcription:
 """
+
+        if provider == 'anthropic':
+            return OpenAIService._format_with_claude(raw_text, prompt)
+        else:
+            return OpenAIService._format_with_openai(raw_text, prompt)
+
+    @staticmethod
+    def _format_with_claude(raw_text: str, prompt: str) -> str:
+        """Format text using Claude (Anthropic) - 200K context window."""
+        client = OpenAIService.get_anthropic_client()
+
+        response = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=16384,  # Much higher limit for long transcriptions
+            messages=[
+                {
+                    "role": "user",
+                    "content": prompt + raw_text
+                }
+            ],
+            system="You are a helpful assistant that formats transcriptions for readability while preserving the original content. Output only the formatted transcription, nothing else."
+        )
+
+        return response.content[0].text
+
+    @staticmethod
+    def _format_with_openai(raw_text: str, prompt: str) -> str:
+        """Format text using OpenAI GPT."""
+        client = OpenAIService.get_openai_client()
 
         response = client.chat.completions.create(
             model="gpt-4o",
@@ -51,7 +87,7 @@ Transcription:
                 }
             ],
             temperature=0.3,
-            max_tokens=4096
+            max_tokens=16384  # Increased from 4096
         )
 
         return response.choices[0].message.content

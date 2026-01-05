@@ -31,6 +31,13 @@ class Config:
     # OpenAI
     OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 
+    # Anthropic (Claude)
+    ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
+
+    # LLM Provider for text formatting: 'anthropic' (Claude) or 'openai' (GPT)
+    # Claude has 200K context window, better for long transcriptions
+    LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'anthropic')
+
     # Whisper
     WHISPER_MODEL = os.environ.get('WHISPER_MODEL', 'base')
     WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large']
