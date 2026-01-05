@@ -1,11 +1,12 @@
 import os
 import subprocess
 import time
-from unittest.mock import patch
+import threading
 
 import whisper
+import whisper.transcribe
 import yt_dlp
-import tqdm.std
+import tqdm
 
 
 class TqdmProgressTracker:
@@ -14,17 +15,13 @@ class TqdmProgressTracker:
     def __init__(self, callback=None):
         self.callback = callback
         self.current_progress = 0.0
-        self._original_tqdm = tqdm.std.tqdm
+        self._original_tqdm = tqdm.tqdm
 
-    def create_wrapper(self):
-        """Create a tqdm wrapper class that reports progress."""
+    def __call__(self, *args, **kwargs):
+        """Create a wrapped tqdm instance."""
         tracker = self
-        original_tqdm = self._original_tqdm
 
-        class ProgressTqdm(original_tqdm):
-            def __init__(self, *args, **kwargs):
-                super().__init__(*args, **kwargs)
-
+        class ProgressTqdm(tracker._original_tqdm):
             def update(self, n=1):
                 result = super().update(n)
                 if self.total and self.total > 0:
@@ -34,7 +31,7 @@ class TqdmProgressTracker:
                         tracker.callback(progress)
                 return result
 
-        return ProgressTqdm
+        return ProgressTqdm(*args, **kwargs)
 class WhisperService:
     """Service for transcribing audio/video files using Whisper."""
     VALID_MODELS = ['tiny', 'base', 'small', 'medium', 'large']
@@ -218,6 +215,7 @@ class WhisperService:
             """Callback when tqdm progress updates."""
             # Only update DB when progress changes by at least 2%
             if progress - last_db_progress[0] >= 2.0:
+                print(f"[TQDM PROGRESS] {progress:.1f}%")
                 if transcription_id and app:
                     current_pos = (progress / 100.0) * duration if duration > 0 else 0.0
                     WhisperService._update_progress_in_db(
@@ -230,14 +228,33 @@ class WhisperService:
         progress_tracker = TqdmProgressTracker(callback=on_progress)
 
         # Transcribe using local Whisper with progress tracking
+        # Patch tqdm in multiple places to ensure we capture progress
+        original_whisper_tqdm = getattr(whisper.transcribe, 'tqdm', None)
+        original_tqdm_tqdm = tqdm.tqdm
+
+        print(f"[DEBUG] original_tqdm in whisper.transcribe: {original_whisper_tqdm}")
+        print(f"[DEBUG] original tqdm.tqdm: {original_tqdm_tqdm}")
+
         try:
             print(f"Starting local Whisper transcription for: {file_path}")
-            # Patch tqdm to capture Whisper's internal progress
-            with patch.object(tqdm.std, 'tqdm', progress_tracker.create_wrapper()):
-                result = model.transcribe(file_path, verbose=False)
+            # Replace the tqdm reference in whisper.transcribe module if it exists
+            if original_whisper_tqdm is not None:
+                whisper.transcribe.tqdm = progress_tracker
+                print(f"[DEBUG] Patched whisper.transcribe.tqdm")
+
+            # Also patch tqdm.tqdm directly as a fallback
+            tqdm.tqdm = progress_tracker
+            print(f"[DEBUG] Patched tqdm.tqdm")
+
+            result = model.transcribe(file_path, verbose=False)
         except Exception as e:
             print(f"Transcription error: {e}")
             raise
+        finally:
+            # Restore original tqdm references
+            if original_whisper_tqdm is not None:
+                whisper.transcribe.tqdm = original_whisper_tqdm
+            tqdm.tqdm = original_tqdm_tqdm
 
         # Final progress update
         if transcription_id and app:
