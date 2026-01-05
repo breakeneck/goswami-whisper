@@ -28,9 +28,13 @@ class EmbeddingService:
             os.makedirs(persist_dir, exist_ok=True)
 
             cls._client = chromadb.PersistentClient(path=persist_dir)
+            # IMPORTANT: Set embedding_function=None to prevent ChromaDB from
+            # loading its own default model (all-MiniLM-L6-v2).
+            # We provide pre-computed embeddings from LaBSE, so no embedding function needed.
             cls._collection = cls._client.get_or_create_collection(
                 name="transcriptions",
-                metadata={"hnsw:space": "cosine"}
+                metadata={"hnsw:space": "cosine"},
+                embedding_function=None
             )
         return cls._collection
 
@@ -108,6 +112,7 @@ class EmbeddingService:
             documents=chunks,
             metadatas=metadatas
         )
+
 
     @classmethod
     def search(cls, query: str, n_results: int = 10) -> List[Dict[str, Any]]:
