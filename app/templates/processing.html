@@ -268,9 +268,14 @@
         if (status === 'transcribing') {
             progressBar.style.width = `${progress}%`;
             progressText.textContent = `${Math.round(progress)}%`;
-        } else if (status === 'formatting' || status === 'indexing') {
+        } else if (status === 'formatting') {
+            // Formatting doesn't have detailed progress, show indeterminate
             progressBar.style.width = '100%';
-            progressText.textContent = '100%';
+            progressText.textContent = 'Processing...';
+        } else if (status === 'indexing') {
+            // Show actual indexing progress
+            progressBar.style.width = `${progress}%`;
+            progressText.textContent = `${Math.round(progress)}%`;
         } else if (status === 'completed') {
             progressBar.style.width = '100%';
             progressText.textContent = '100%';

@@ -34,7 +34,8 @@ def process_transcription_async(app, transcription_id, file_path, model_name):
             raw_text = WhisperService.transcribe_file(
                 file_path,
                 model_name=model_name,
-                transcription_id=transcription_id
+                transcription_id=transcription_id,
+                app=app
             )
             transcription.raw_text = raw_text
             transcription.status = 'formatting'
@@ -61,10 +62,18 @@ def process_transcription_async(app, transcription_id, file_path, model_name):
         try:
             text_to_embed = transcription.formatted_text or transcription.raw_text
             if text_to_embed:
+                # Update progress to show indexing is in progress
+                transcription.progress = 50.0
+                db.session.commit()
+
                 EmbeddingService.index_transcription(
                     transcription_id=transcription.id,
                     text=text_to_embed
                 )
+
+                # Update progress to show indexing is complete
+                transcription.progress = 100.0
+                db.session.commit()
             transcription.status = 'completed'
             db.session.commit()
         except Exception as e:

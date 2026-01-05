@@ -22,7 +22,7 @@ class WhisperService:
             return 0.0
 
     @staticmethod
-    def transcribe_file(file_path: str, model_name: str = None, transcription_id: int = None) -> str:
+    def transcribe_file(file_path: str, model_name: str = None, transcription_id: int = None, app=None) -> str:
         """
         Transcribe an audio/video file using Whisper.
 
@@ -30,6 +30,7 @@ class WhisperService:
             file_path: Path to the audio/video file
             model_name: Whisper model to use (tiny, base, small, medium, large)
             transcription_id: Optional transcription ID for progress tracking
+            app: Flask app instance for context in background threads
 
         Returns:
             Transcribed text
@@ -42,9 +43,19 @@ class WhisperService:
             from app import db
             from app.models.transcription import Transcription
 
+            # Get app reference for thread context
+            if app is None:
+                try:
+                    app = current_app._get_current_object()
+                except RuntimeError:
+                    app = None
+
             # Use provided model or fall back to config default
             if model_name is None:
-                model_name = current_app.config.get('WHISPER_MODEL', 'base')
+                if app:
+                    model_name = app.config.get('WHISPER_MODEL', 'base')
+                else:
+                    model_name = 'base'
 
             # Validate model name
             if model_name not in WhisperService.VALID_MODELS:
@@ -63,14 +74,20 @@ class WhisperService:
                 'large': 0.8
             }
             speed_factor = speed_factors.get(model_name, 0.2)
+            # Use a default estimated duration of 60 seconds if duration is unknown
             estimated_duration = duration * speed_factor if duration > 0 else 60
 
-            if transcription_id and duration > 0:
-                transcription = Transcription.query.get(transcription_id)
-                if transcription:
-                    transcription.duration_seconds = duration
-                    transcription.progress = 0.0
-                    db.session.commit()
+            # Update initial duration in database
+            if transcription_id:
+                try:
+                    transcription = Transcription.query.get(transcription_id)
+                    if transcription:
+                        if duration > 0:
+                            transcription.duration_seconds = duration
+                        transcription.progress = 0.0
+                        db.session.commit()
+                except Exception:
+                    pass
 
             # Load Whisper model
             model = whisper.load_model(model_name)
@@ -80,7 +97,7 @@ class WhisperService:
 
             def update_progress():
                 """Update progress based on estimated time."""
-                if not transcription_id or duration <= 0:
+                if not transcription_id:
                     return
 
                 start_time = time.time()
@@ -91,14 +108,26 @@ class WhisperService:
                     progress = min(95.0, (elapsed / estimated_duration) * 100)
 
                     # Also estimate current position in audio
-                    current_pos = min(duration * 0.95, (elapsed / estimated_duration) * duration)
+                    if duration > 0:
+                        current_pos = min(duration * 0.95, (elapsed / estimated_duration) * duration)
+                    else:
+                        current_pos = 0.0
 
                     try:
-                        transcription = Transcription.query.get(transcription_id)
-                        if transcription and transcription.status == 'transcribing':
-                            transcription.progress = progress
-                            transcription.current_position = current_pos
-                            db.session.commit()
+                        # Use app context for database operations in thread
+                        if app:
+                            with app.app_context():
+                                transcription = Transcription.query.get(transcription_id)
+                                if transcription and transcription.status == 'transcribing':
+                                    transcription.progress = progress
+                                    transcription.current_position = current_pos
+                                    db.session.commit()
+                        else:
+                            transcription = Transcription.query.get(transcription_id)
+                            if transcription and transcription.status == 'transcribing':
+                                transcription.progress = progress
+                                transcription.current_position = current_pos
+                                db.session.commit()
                     except Exception:
                         pass
 
@@ -117,12 +146,16 @@ class WhisperService:
                 progress_thread.join(timeout=2)
 
             # Final progress update based on actual segments
-            if transcription_id and duration > 0:
-                transcription = Transcription.query.get(transcription_id)
-                if transcription:
-                    transcription.progress = 100.0
-                    transcription.current_position = duration
-                    db.session.commit()
+            if transcription_id:
+                try:
+                    transcription = Transcription.query.get(transcription_id)
+                    if transcription:
+                        transcription.progress = 100.0
+                        if duration > 0:
+                            transcription.current_position = duration
+                        db.session.commit()
+                except Exception:
+                    pass
 
             return result["text"]
         except ImportError:
