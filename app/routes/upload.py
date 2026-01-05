@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 from werkzeug.utils import secure_filename
 import os
 import threading
+import uuid
 from app import db
 from app.models.transcription import Transcription
 from app.services.whisper_service import WhisperService
@@ -95,13 +96,21 @@ def upload():
                     return redirect(url_for('upload.upload'))
 
                 # Save the file
+                original_filename = file.filename
                 filename = secure_filename(file.filename)
+                # If secure_filename removed all characters (non-ASCII filename),
+                # generate a UUID-based filename preserving the extension
+                if not filename or filename.startswith('.'):
+                    original_ext = ''
+                    if '.' in file.filename:
+                        original_ext = '.' + file.filename.rsplit('.', 1)[1].lower()
+                    filename = f"{uuid.uuid4().hex}{original_ext}"
                 file_path = os.path.join(current_app.config['UPLOAD_FOLDER'], filename)
                 file.save(file_path)
 
                 # Create transcription record
                 transcription = Transcription(
-                    filename=filename,
+                    filename=original_filename,  # Store original filename for display
                     status='pending',
                     progress=0.0
                 )

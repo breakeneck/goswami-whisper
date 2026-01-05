@@ -132,10 +132,15 @@ class WhisperService:
 
             client = OpenAI(api_key=current_app.config.get('OPENAI_API_KEY'))
 
+            # Get the file extension to preserve format info
+            file_extension = os.path.splitext(file_path)[1].lower()
+            # Use ASCII-safe filename to avoid encoding issues with non-Latin characters
+            safe_filename = f"audio{file_extension}"
+
             with open(file_path, 'rb') as audio_file:
                 transcript = client.audio.transcriptions.create(
                     model="whisper-1",
-                    file=audio_file
+                    file=(safe_filename, audio_file, f"audio/{file_extension.lstrip('.')}")
                 )
 
             return transcript.text
