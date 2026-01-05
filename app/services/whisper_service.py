@@ -1,5 +1,9 @@
 import os
 import subprocess
+import threading
+import time
+
+import whisper
 import yt_dlp
 class WhisperService:
     """Service for transcribing audio/video files using Whisper."""
@@ -129,7 +133,7 @@ class WhisperService:
     @staticmethod
     def transcribe_file(file_path: str, model_name: str = None, transcription_id: int = None, app=None) -> str:
         """
-        Transcribe an audio/video file using Whisper.
+        Transcribe an audio/video file using local Whisper.
         Args:
             file_path: Path to the audio/video file
             model_name: Whisper model to use (tiny, base, small, medium, large)
@@ -138,150 +142,97 @@ class WhisperService:
         Returns:
             Transcribed text
         """
-        try:
-            import whisper
-            import threading
-            import time
-            from flask import current_app
-            # Get app reference for thread context
-            if app is None:
-                try:
-                    app = current_app._get_current_object()
-                except RuntimeError:
-                    app = None
-            # Use provided model or fall back to config default
-            if model_name is None:
-                if app:
-                    model_name = app.config.get('WHISPER_MODEL', 'base')
-                else:
-                    model_name = 'base'
-            # Validate model name
-            if model_name not in WhisperService.VALID_MODELS:
+        from flask import current_app
+
+        # Get app reference for thread context
+        if app is None:
+            try:
+                app = current_app._get_current_object()
+            except RuntimeError:
+                app = None
+
+        # Use provided model or fall back to config default
+        if model_name is None:
+            if app:
+                model_name = app.config.get('WHISPER_MODEL', 'base')
+            else:
                 model_name = 'base'
-            # Get audio duration for progress tracking
-            duration = WhisperService.get_audio_duration(file_path)
-            # Speed factors for different models (approximate real-time factor)
-            speed_factors = {
-                'tiny': 0.05,
-                'base': 0.1,
-                'small': 0.2,
-                'medium': 0.4,
-                'large': 0.8
-            }
-            speed_factor = speed_factors.get(model_name, 0.2)
-            estimated_duration = duration * speed_factor if duration > 0 else 60
-            # Update initial duration in database
-            if transcription_id and app:
-                WhisperService._update_progress_in_db(
-                    app, transcription_id, 0.0,
-                    current_pos=0.0,
-                    duration=duration if duration > 0 else None
-                )
-            # Load Whisper model
-            model = whisper.load_model(model_name)
-            # Progress tracking in background thread
-            progress_stop_event = threading.Event()
-            def update_progress():
-                """Update progress based on estimated time."""
-                print(f"Local Whisper progress thread started: transcription_id={transcription_id}, app={app is not None}")
-                if not transcription_id or not app:
-                    print("Progress thread exiting early - no transcription_id or app")
-                    return
-                start_time = time.time()
-                while not progress_stop_event.is_set():
-                    elapsed = time.time() - start_time
-                    progress = min(95.0, (elapsed / estimated_duration) * 100)
-                    if duration > 0:
-                        current_pos = min(duration * 0.95, (elapsed / estimated_duration) * duration)
-                    else:
-                        current_pos = 0.0
-                    WhisperService._update_progress_in_db(
-                        app, transcription_id, progress,
-                        current_pos=current_pos,
-                        status_check='transcribing'
-                    )
-                    time.sleep(1)
-            # Start progress tracking thread
-            progress_thread = threading.Thread(target=update_progress, daemon=True)
-            progress_thread.start()
-            # Transcribe
-            try:
-                result = model.transcribe(file_path, verbose=False)
-            finally:
-                progress_stop_event.set()
-                progress_thread.join(timeout=2)
-            # Final progress update
-            if transcription_id and app:
-                WhisperService._update_progress_in_db(
-                    app, transcription_id, 100.0,
-                    current_pos=duration if duration > 0 else None
-                )
-            return result["text"]
-        except ImportError:
-            # Fallback to OpenAI Whisper API if local model not available
-            import threading
-            import time
-            from openai import OpenAI
-            from flask import current_app
-            if app is None:
-                try:
-                    app = current_app._get_current_object()
-                except RuntimeError:
-                    app = None
-            # Get audio duration for progress tracking
-            duration = WhisperService.get_audio_duration(file_path)
-            # Check file size and compress if needed (OpenAI has 25MB limit)
-            actual_file_path = WhisperService.compress_audio_for_api(file_path)
-            # Start a simple progress thread for API transcription
-            progress_stop_event = threading.Event()
-            def update_api_progress():
-                """Update progress for API-based transcription."""
-                print(f"Progress thread started: transcription_id={transcription_id}, app={app is not None}")
-                if not transcription_id or not app:
-                    print("Progress thread exiting early - no transcription_id or app")
-                    return
-                start_time = time.time()
-                estimated_time = duration if duration > 0 else 60
-                while not progress_stop_event.is_set():
-                    elapsed = time.time() - start_time
-                    progress = min(95.0, (elapsed / estimated_time) * 100)
+
+        # Validate model name
+        if model_name not in WhisperService.VALID_MODELS:
+            model_name = 'base'
+
+        # Get audio duration for progress tracking
+        duration = WhisperService.get_audio_duration(file_path)
+
+        # Speed factors for different models (approximate real-time factor)
+        speed_factors = {
+            'tiny': 0.05,
+            'base': 0.1,
+            'small': 0.2,
+            'medium': 0.4,
+            'large': 0.8
+        }
+        speed_factor = speed_factors.get(model_name, 0.2)
+        estimated_duration = duration * speed_factor if duration > 0 else 60
+
+        # Update initial duration in database
+        if transcription_id and app:
+            WhisperService._update_progress_in_db(
+                app, transcription_id, 0.0,
+                current_pos=0.0,
+                duration=duration if duration > 0 else None
+            )
+
+        # Load local Whisper model
+        print(f"Loading local Whisper model: {model_name}")
+        model = whisper.load_model(model_name)
+
+        # Progress tracking in background thread
+        progress_stop_event = threading.Event()
+
+        def update_progress():
+            """Update progress based on estimated time."""
+            print(f"Local Whisper progress thread started: transcription_id={transcription_id}, app={app is not None}")
+            if not transcription_id or not app:
+                print("Progress thread exiting early - no transcription_id or app")
+                return
+            start_time = time.time()
+            while not progress_stop_event.is_set():
+                elapsed = time.time() - start_time
+                progress = min(95.0, (elapsed / estimated_duration) * 100)
+                if duration > 0:
+                    current_pos = min(duration * 0.95, (elapsed / estimated_duration) * duration)
+                else:
                     current_pos = 0.0
-                    if duration > 0:
-                        current_pos = min(duration * 0.95, (elapsed / estimated_time) * duration)
-                    WhisperService._update_progress_in_db(
-                        app, transcription_id, progress,
-                        current_pos=current_pos,
-                        duration=duration if duration > 0 else None,
-                        status_check='transcribing'
-                    )
-                    time.sleep(1)
-            progress_thread = threading.Thread(target=update_api_progress, daemon=True)
-            progress_thread.start()
-            try:
-                client = OpenAI(api_key=current_app.config.get('OPENAI_API_KEY'))
-                file_extension = os.path.splitext(actual_file_path)[1].lower()
-                safe_filename = f"audio{file_extension}"
-                with open(actual_file_path, 'rb') as audio_file:
-                    transcript = client.audio.transcriptions.create(
-                        model="whisper-1",
-                        file=(safe_filename, audio_file, f"audio/{file_extension.lstrip('.')}")
-                    )
-                return transcript.text
-            finally:
-                progress_stop_event.set()
-                progress_thread.join(timeout=2)
-                # Clean up compressed file if created
-                if actual_file_path != file_path and os.path.exists(actual_file_path):
-                    try:
-                        os.remove(actual_file_path)
-                    except Exception:
-                        pass
-                # Final progress update
-                if transcription_id and app:
-                    WhisperService._update_progress_in_db(
-                        app, transcription_id, 100.0,
-                        current_pos=duration if duration > 0 else None
-                    )
+                WhisperService._update_progress_in_db(
+                    app, transcription_id, progress,
+                    current_pos=current_pos,
+                    status_check='transcribing'
+                )
+                time.sleep(1)
+
+        # Start progress tracking thread
+        progress_thread = threading.Thread(target=update_progress, daemon=True)
+        progress_thread.start()
+
+        # Transcribe using local Whisper
+        try:
+            print(f"Starting local Whisper transcription for: {file_path}")
+            result = model.transcribe(file_path, verbose=False)
+        finally:
+            progress_stop_event.set()
+            progress_thread.join(timeout=2)
+
+        # Final progress update
+        if transcription_id and app:
+            WhisperService._update_progress_in_db(
+                app, transcription_id, 100.0,
+                current_pos=duration if duration > 0 else None
+            )
+
+        print(f"Local Whisper transcription complete")
+        return result["text"]
     @staticmethod
     def download_from_url(url: str, output_dir: str) -> str:
         """
