@@ -31,6 +31,10 @@ class Config:
     # OpenAI
     OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
 
+    # Whisper
+    WHISPER_MODEL = os.environ.get('WHISPER_MODEL', 'base')
+    WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large']
+
     # ChromaDB
     CHROMA_PERSIST_DIR = os.environ.get('CHROMA_PERSIST_DIR', os.path.join(os.path.dirname(__file__), 'chroma_db'))
 

@@ -128,7 +128,9 @@ def upload():
             flash(f'An error occurred: {str(e)}', 'error')
             return redirect(url_for('upload.upload'))
 
-    return render_template('upload.html')
+    return render_template('upload.html',
+                           whisper_models=current_app.config['WHISPER_MODELS'],
+                           default_model=current_app.config['WHISPER_MODEL'])
 
 
 @upload_bp.route('/status/<int:id>')

@@ -7,22 +7,34 @@ import yt_dlp
 class WhisperService:
     """Service for transcribing audio/video files using Whisper."""
 
+    VALID_MODELS = ['tiny', 'base', 'small', 'medium', 'large']
+
     @staticmethod
-    def transcribe_file(file_path: str) -> str:
+    def transcribe_file(file_path: str, model_name: str = None) -> str:
         """
         Transcribe an audio/video file using Whisper.
 
         Args:
             file_path: Path to the audio/video file
+            model_name: Whisper model to use (tiny, base, small, medium, large)
 
         Returns:
             Transcribed text
         """
         try:
             import whisper
+            from flask import current_app
 
-            # Load Whisper model (use 'base' for speed, 'large' for accuracy)
-            model = whisper.load_model("base")
+            # Use provided model or fall back to config default
+            if model_name is None:
+                model_name = current_app.config.get('WHISPER_MODEL', 'base')
+
+            # Validate model name
+            if model_name not in WhisperService.VALID_MODELS:
+                model_name = 'base'
+
+            # Load Whisper model
+            model = whisper.load_model(model_name)
 
             # Transcribe
             result = model.transcribe(file_path)

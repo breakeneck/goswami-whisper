@@ -43,6 +43,29 @@
                         </div>
                     </div>
 
+                    <!-- Whisper Model Selection -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-cpu me-1"></i>Whisper Model
+                        </label>
+                        <select class="form-select" name="whisper_model" id="whisperModel">
+                            {% for model in whisper_models %}
+                            <option value="{{ model }}" {% if model == default_model %}selected{% endif %}>
+                                {{ model | capitalize }}
+                                {% if model == 'tiny' %} (Fastest, less accurate)
+                                {% elif model == 'base' %} (Fast, good accuracy)
+                                {% elif model == 'small' %} (Balanced)
+                                {% elif model == 'medium' %} (Slower, better accuracy)
+                                {% elif model == 'large' %} (Slowest, best accuracy)
+                                {% endif %}
+                            </option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">
+                            Larger models are more accurate but require more processing time and memory
+                        </div>
+                    </div>
+
                     <!-- Submit Button -->
                     <div class="d-grid gap-2">
                         <button type="submit" class="btn btn-primary btn-lg" id="submitBtn">
