@@ -63,8 +63,13 @@ def process_transcription_async(app, transcription_id, file_path, model_name):
             text_to_embed = transcription.formatted_text or transcription.raw_text
             if text_to_embed:
                 # Update progress to show indexing is in progress
-                transcription.progress = 50.0
+                transcription.progress = 0.0
                 db.session.commit()
+
+                # Log the size of text being processed
+                import logging
+                logger = logging.getLogger(__name__)
+                logger.info(f"Indexing transcription {transcription.id}: {len(text_to_embed)} characters")
 
                 EmbeddingService.index_transcription(
                     transcription_id=transcription.id,
@@ -74,9 +79,15 @@ def process_transcription_async(app, transcription_id, file_path, model_name):
                 # Update progress to show indexing is complete
                 transcription.progress = 100.0
                 db.session.commit()
+                logger.info(f"Indexing complete for transcription {transcription.id}")
             transcription.status = 'completed'
             db.session.commit()
         except Exception as e:
+            import logging
+            import traceback
+            logger = logging.getLogger(__name__)
+            logger.error(f"Indexing error for transcription {transcription.id}: {e}")
+            logger.error(traceback.format_exc())
             transcription.status = 'completed'
             transcription.error_message = f"Indexing warning: {str(e)}"
             db.session.commit()

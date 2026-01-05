@@ -1,12 +1,15 @@
 import os
 import subprocess
 import time
-import threading
+import gc
+import logging
 
 import whisper
 import whisper.transcribe
 import yt_dlp
 import tqdm
+
+logger = logging.getLogger(__name__)
 
 
 class TqdmProgressTracker:
@@ -157,10 +160,71 @@ class WhisperService:
         except Exception:
             pass
         return file_path  # Return original if compression fails
+
+    @staticmethod
+    def split_audio_into_chunks(file_path: str, chunk_duration_minutes: int = 10) -> list:
+        """
+        Split a long audio file into smaller chunks for processing.
+
+        Args:
+            file_path: Path to the audio file
+            chunk_duration_minutes: Duration of each chunk in minutes
+
+        Returns:
+            List of paths to chunk files (or [file_path] if file is short enough)
+        """
+        duration = WhisperService.get_audio_duration(file_path)
+        chunk_duration_seconds = chunk_duration_minutes * 60
+
+        # If file is shorter than chunk duration, return as-is
+        if duration <= chunk_duration_seconds:
+            return [file_path]
+
+        base_name = os.path.splitext(file_path)[0]
+        ext = os.path.splitext(file_path)[1]
+
+        chunks = []
+        start_time = 0
+        chunk_idx = 0
+
+        while start_time < duration:
+            chunk_path = f"{base_name}_chunk{chunk_idx}{ext}"
+
+            try:
+                # Use ffmpeg to extract chunk
+                subprocess.run([
+                    'ffmpeg', '-y', '-i', file_path,
+                    '-ss', str(start_time),
+                    '-t', str(chunk_duration_seconds),
+                    '-acodec', 'copy',
+                    chunk_path
+                ], capture_output=True, check=True)
+
+                if os.path.exists(chunk_path):
+                    chunks.append(chunk_path)
+                    logger.info(f"Created audio chunk {chunk_idx}: {start_time}s - {min(start_time + chunk_duration_seconds, duration)}s")
+
+            except Exception as e:
+                logger.error(f"Error creating audio chunk {chunk_idx}: {e}")
+                # If chunking fails, fall back to processing whole file
+                for chunk in chunks:
+                    try:
+                        os.remove(chunk)
+                    except:
+                        pass
+                return [file_path]
+
+            start_time += chunk_duration_seconds
+            chunk_idx += 1
+
+        return chunks if chunks else [file_path]
+
     @staticmethod
     def transcribe_file(file_path: str, model_name: str = None, transcription_id: int = None, app=None) -> str:
         """
         Transcribe an audio/video file using local Whisper.
+        For long files (>10 minutes), splits into chunks to avoid memory issues.
+
         Args:
             file_path: Path to the audio/video file
             model_name: Whisper model to use (tiny, base, small, medium, large)
@@ -191,6 +255,7 @@ class WhisperService:
 
         # Get audio duration for progress tracking
         duration = WhisperService.get_audio_duration(file_path)
+        logger.info(f"Audio duration: {duration:.1f}s ({duration/60:.1f} minutes)")
 
         # Update initial duration in database
         if transcription_id and app:
@@ -200,61 +265,95 @@ class WhisperService:
                 duration=duration if duration > 0 else None
             )
 
+        # Split long audio files into chunks (10 minutes each)
+        # This prevents memory issues and allows for better progress tracking
+        chunk_duration_minutes = 10
+        audio_chunks = WhisperService.split_audio_into_chunks(file_path, chunk_duration_minutes)
+        is_chunked = len(audio_chunks) > 1
+
+        if is_chunked:
+            logger.info(f"Split audio into {len(audio_chunks)} chunks for processing")
+
         # Load local Whisper model
-        print(f"Loading local Whisper model: {model_name}")
+        logger.info(f"Loading local Whisper model: {model_name}")
 
         model_load_start = time.time()
         model = whisper.load_model(model_name)
         model_load_time = time.time() - model_load_start
-        print(f"Model loaded in {model_load_time:.1f}s")
+        logger.info(f"Model loaded in {model_load_time:.1f}s")
 
-        # Create progress tracker that captures real tqdm progress from Whisper
-        last_db_progress = [0.0]  # Use list to allow modification in nested function
+        # Process each chunk
+        all_texts = []
 
-        def on_progress(progress):
-            """Callback when tqdm progress updates."""
-            # Only update DB when progress changes by at least 2%
-            if progress - last_db_progress[0] >= 2.0:
-                print(f"[TQDM PROGRESS] {progress:.1f}%")
-                if transcription_id and app:
-                    current_pos = (progress / 100.0) * duration if duration > 0 else 0.0
-                    WhisperService._update_progress_in_db(
-                        app, transcription_id, progress,
-                        current_pos=current_pos,
-                        status_check='transcribing'
-                    )
-                    last_db_progress[0] = progress
+        for chunk_idx, chunk_path in enumerate(audio_chunks):
+            # Calculate progress range for this chunk
+            if is_chunked:
+                chunk_start_progress = (chunk_idx / len(audio_chunks)) * 100
+                chunk_end_progress = ((chunk_idx + 1) / len(audio_chunks)) * 100
+                logger.info(f"Processing chunk {chunk_idx + 1}/{len(audio_chunks)}")
+            else:
+                chunk_start_progress = 0.0
+                chunk_end_progress = 100.0
 
-        progress_tracker = TqdmProgressTracker(callback=on_progress)
+            # Create progress tracker for this chunk
+            last_db_progress = [chunk_start_progress]
 
-        # Transcribe using local Whisper with progress tracking
-        # Patch tqdm in multiple places to ensure we capture progress
-        original_whisper_tqdm = getattr(whisper.transcribe, 'tqdm', None)
-        original_tqdm_tqdm = tqdm.tqdm
+            def on_progress(progress, start_prog=chunk_start_progress, end_prog=chunk_end_progress):
+                """Callback when tqdm progress updates."""
+                # Map chunk progress to overall progress
+                overall_progress = start_prog + (progress / 100.0) * (end_prog - start_prog)
 
-        print(f"[DEBUG] original_tqdm in whisper.transcribe: {original_whisper_tqdm}")
-        print(f"[DEBUG] original tqdm.tqdm: {original_tqdm_tqdm}")
+                # Only update DB when progress changes by at least 2%
+                if overall_progress - last_db_progress[0] >= 2.0:
+                    logger.debug(f"[PROGRESS] Chunk {chunk_idx + 1}: {progress:.1f}% -> Overall: {overall_progress:.1f}%")
+                    if transcription_id and app:
+                        current_pos = (overall_progress / 100.0) * duration if duration > 0 else 0.0
+                        WhisperService._update_progress_in_db(
+                            app, transcription_id, overall_progress,
+                            current_pos=current_pos,
+                            status_check='transcribing'
+                        )
+                        last_db_progress[0] = overall_progress
 
-        try:
-            print(f"Starting local Whisper transcription for: {file_path}")
-            # Replace the tqdm reference in whisper.transcribe module if it exists
-            if original_whisper_tqdm is not None:
-                whisper.transcribe.tqdm = progress_tracker
-                print(f"[DEBUG] Patched whisper.transcribe.tqdm")
+            progress_tracker = TqdmProgressTracker(callback=on_progress)
 
-            # Also patch tqdm.tqdm directly as a fallback
-            tqdm.tqdm = progress_tracker
-            print(f"[DEBUG] Patched tqdm.tqdm")
+            # Patch tqdm for progress tracking
+            original_whisper_tqdm = getattr(whisper.transcribe, 'tqdm', None)
+            original_tqdm_tqdm = tqdm.tqdm
 
-            result = model.transcribe(file_path, verbose=False)
-        except Exception as e:
-            print(f"Transcription error: {e}")
-            raise
-        finally:
-            # Restore original tqdm references
-            if original_whisper_tqdm is not None:
-                whisper.transcribe.tqdm = original_whisper_tqdm
-            tqdm.tqdm = original_tqdm_tqdm
+            try:
+                logger.info(f"Starting transcription for: {chunk_path}")
+
+                if original_whisper_tqdm is not None:
+                    whisper.transcribe.tqdm = progress_tracker
+
+                tqdm.tqdm = progress_tracker
+
+                result = model.transcribe(chunk_path, verbose=False)
+                all_texts.append(result["text"].strip())
+
+            except Exception as e:
+                logger.error(f"Transcription error for chunk {chunk_idx + 1}: {e}")
+                raise
+            finally:
+                # Restore original tqdm references
+                if original_whisper_tqdm is not None:
+                    whisper.transcribe.tqdm = original_whisper_tqdm
+                tqdm.tqdm = original_tqdm_tqdm
+
+                # Clean up chunk file if we created it
+                if is_chunked and chunk_path != file_path:
+                    try:
+                        os.remove(chunk_path)
+                        logger.debug(f"Cleaned up chunk file: {chunk_path}")
+                    except Exception as e:
+                        logger.warning(f"Failed to clean up chunk file {chunk_path}: {e}")
+
+                # Force garbage collection after each chunk
+                gc.collect()
+
+        # Combine all transcribed texts
+        full_text = " ".join(all_texts)
 
         # Final progress update
         if transcription_id and app:
@@ -263,8 +362,9 @@ class WhisperService:
                 current_pos=duration if duration > 0 else None
             )
 
-        print(f"Local Whisper transcription complete")
-        return result["text"]
+        logger.info(f"Transcription complete: {len(full_text)} characters")
+        return full_text
+
     @staticmethod
     def download_from_url(url: str, output_dir: str) -> str:
         """

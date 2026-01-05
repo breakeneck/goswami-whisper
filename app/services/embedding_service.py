@@ -3,6 +3,10 @@ from sentence_transformers import SentenceTransformer
 from flask import current_app
 from typing import List, Dict, Any
 import os
+import gc
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class EmbeddingService:
@@ -12,12 +16,21 @@ class EmbeddingService:
     _client = None
     _collection = None
 
+    # Batch size for processing embeddings to avoid memory issues
+    EMBEDDING_BATCH_SIZE = 32
+
     @classmethod
     def get_model(cls) -> SentenceTransformer:
         """Get or initialize the sentence transformer model."""
         if cls._model is None:
-            # LaBSE is good for multilingual content
-            cls._model = SentenceTransformer('sentence-transformers/LaBSE')
+            try:
+                # LaBSE is good for multilingual content
+                logger.info("Loading SentenceTransformer model...")
+                cls._model = SentenceTransformer('sentence-transformers/LaBSE')
+                logger.info("SentenceTransformer model loaded successfully")
+            except Exception as e:
+                logger.error(f"Failed to load SentenceTransformer model: {e}")
+                raise
         return cls._model
 
     @classmethod
@@ -94,20 +107,43 @@ class EmbeddingService:
         if not chunks:
             return
 
-        # Generate embeddings
-        embeddings = model.encode(chunks).tolist()
+        logger.info(f"Indexing transcription {transcription_id}: {len(chunks)} chunks")
 
-        # Prepare documents for ChromaDB
-        ids = [f"{transcription_id}_{i}" for i in range(len(chunks))]
-        metadatas = [{"transcription_id": transcription_id, "chunk_index": i} for i in range(len(chunks))]
+        # Process in batches to avoid memory issues
+        batch_size = cls.EMBEDDING_BATCH_SIZE
+        total_batches = (len(chunks) + batch_size - 1) // batch_size
 
-        # Add to collection
-        collection.add(
-            ids=ids,
-            embeddings=embeddings,
-            documents=chunks,
-            metadatas=metadatas
-        )
+        for batch_idx in range(total_batches):
+            start_idx = batch_idx * batch_size
+            end_idx = min(start_idx + batch_size, len(chunks))
+            batch_chunks = chunks[start_idx:end_idx]
+
+            try:
+                # Generate embeddings for this batch
+                embeddings = model.encode(batch_chunks, show_progress_bar=False).tolist()
+
+                # Prepare documents for ChromaDB
+                ids = [f"{transcription_id}_{i}" for i in range(start_idx, end_idx)]
+                metadatas = [{"transcription_id": transcription_id, "chunk_index": i} for i in range(start_idx, end_idx)]
+
+                # Add to collection
+                collection.add(
+                    ids=ids,
+                    embeddings=embeddings,
+                    documents=batch_chunks,
+                    metadatas=metadatas
+                )
+
+                logger.info(f"Indexed batch {batch_idx + 1}/{total_batches} for transcription {transcription_id}")
+
+                # Force garbage collection after each batch to free memory
+                gc.collect()
+
+            except Exception as e:
+                logger.error(f"Error indexing batch {batch_idx + 1} for transcription {transcription_id}: {e}")
+                raise
+
+        logger.info(f"Completed indexing transcription {transcription_id}")
 
     @classmethod
     def search(cls, query: str, n_results: int = 10) -> List[Dict[str, Any]]:
