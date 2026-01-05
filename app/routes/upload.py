@@ -206,6 +206,8 @@ def processing(id):
 @upload_bp.route('/status/<int:id>')
 def status(id):
     """Get the status of a transcription (for AJAX polling)."""
+    # Expire all objects to force a fresh read from the database
+    db.session.expire_all()
     transcription = Transcription.query.get_or_404(id)
     return jsonify(transcription.to_dict())
 
