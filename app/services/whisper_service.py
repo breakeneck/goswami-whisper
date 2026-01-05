@@ -165,18 +165,20 @@ class WhisperService:
         # Get audio duration for progress tracking
         duration = WhisperService.get_audio_duration(file_path)
 
-        # Speed factors for different models (approximate real-time factor)
-        # These are conservative estimates to ensure progress doesn't jump to 100% too fast
+        # Speed factors for different models (approximate processing time relative to audio duration)
+        # These are calibrated for modern GPU/CPU - actual transcription is very fast
+        # For a 70-min file, we want progress to feel smooth even if it only takes 30-60 seconds
         speed_factors = {
-            'tiny': 0.15,
-            'base': 0.25,
-            'small': 0.5,
-            'medium': 0.8,
-            'large': 1.2
+            'tiny': 0.005,   # ~20 seconds for 70 min file
+            'base': 0.01,    # ~40 seconds for 70 min file
+            'small': 0.02,   # ~80 seconds for 70 min file
+            'medium': 0.05,  # ~3.5 min for 70 min file
+            'large': 0.1     # ~7 min for 70 min file
         }
-        speed_factor = speed_factors.get(model_name, 0.3)
-        # Minimum estimated duration is 30 seconds to handle short files
-        estimated_duration = max(30.0, duration * speed_factor) if duration > 0 else 60
+        speed_factor = speed_factors.get(model_name, 0.01)
+        # Minimum estimated duration is 15 seconds to handle short files
+        # This gives smoother progress for fast transcriptions
+        estimated_duration = max(15.0, duration * speed_factor) if duration > 0 else 30
 
         # Update initial duration in database
         if transcription_id and app:
@@ -209,15 +211,18 @@ class WhisperService:
                 return
             start_time = time.time()
             last_progress = 0.0
+            # Adaptive update interval: faster updates for shorter estimated durations
+            update_interval = max(0.3, min(2.0, total_estimated_duration / 50))
+            print(f"Progress update interval: {update_interval:.1f}s, estimated duration: {total_estimated_duration:.1f}s")
+
             while not progress_stop_event.is_set():
                 elapsed = time.time() - start_time
-                # Use logarithmic curve for smoother progress that slows down as it approaches 95%
+                # Linear progress up to 95%, capped
                 raw_progress = (elapsed / total_estimated_duration) * 100
-                # Apply easing: progress increases quickly at first, then slows down
-                progress = min(95.0, raw_progress * 0.8 + (raw_progress / 100.0) * 15.0)
+                progress = min(95.0, raw_progress)
 
-                # Only update if progress increased significantly (at least 0.5%)
-                if progress - last_progress >= 0.5:
+                # Update if progress increased by at least 1% or 0.5 seconds have passed
+                if progress - last_progress >= 1.0:
                     if duration > 0:
                         current_pos = min(duration * 0.95, (progress / 100.0) * duration)
                     else:
@@ -228,7 +233,7 @@ class WhisperService:
                         status_check='transcribing'
                     )
                     last_progress = progress
-                time.sleep(2)  # Update every 2 seconds for smoother experience
+                time.sleep(update_interval)
 
         # Start progress tracking thread
         progress_thread = threading.Thread(target=update_progress, daemon=True)
