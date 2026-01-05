@@ -166,15 +166,17 @@ class WhisperService:
         duration = WhisperService.get_audio_duration(file_path)
 
         # Speed factors for different models (approximate real-time factor)
+        # These are conservative estimates to ensure progress doesn't jump to 100% too fast
         speed_factors = {
-            'tiny': 0.05,
-            'base': 0.1,
-            'small': 0.2,
-            'medium': 0.4,
-            'large': 0.8
+            'tiny': 0.15,
+            'base': 0.25,
+            'small': 0.5,
+            'medium': 0.8,
+            'large': 1.2
         }
-        speed_factor = speed_factors.get(model_name, 0.2)
-        estimated_duration = duration * speed_factor if duration > 0 else 60
+        speed_factor = speed_factors.get(model_name, 0.3)
+        # Minimum estimated duration is 30 seconds to handle short files
+        estimated_duration = max(30.0, duration * speed_factor) if duration > 0 else 60
 
         # Update initial duration in database
         if transcription_id and app:
@@ -186,7 +188,15 @@ class WhisperService:
 
         # Load local Whisper model
         print(f"Loading local Whisper model: {model_name}")
+
+        # Track model loading time for progress calculation
+        model_load_start = time.time()
         model = whisper.load_model(model_name)
+        model_load_time = time.time() - model_load_start
+        print(f"Model loaded in {model_load_time:.1f}s")
+
+        # Add model load time to estimated duration
+        total_estimated_duration = estimated_duration + model_load_time
 
         # Progress tracking in background thread
         progress_stop_event = threading.Event()
@@ -198,19 +208,27 @@ class WhisperService:
                 print("Progress thread exiting early - no transcription_id or app")
                 return
             start_time = time.time()
+            last_progress = 0.0
             while not progress_stop_event.is_set():
                 elapsed = time.time() - start_time
-                progress = min(95.0, (elapsed / estimated_duration) * 100)
-                if duration > 0:
-                    current_pos = min(duration * 0.95, (elapsed / estimated_duration) * duration)
-                else:
-                    current_pos = 0.0
-                WhisperService._update_progress_in_db(
-                    app, transcription_id, progress,
-                    current_pos=current_pos,
-                    status_check='transcribing'
-                )
-                time.sleep(1)
+                # Use logarithmic curve for smoother progress that slows down as it approaches 95%
+                raw_progress = (elapsed / total_estimated_duration) * 100
+                # Apply easing: progress increases quickly at first, then slows down
+                progress = min(95.0, raw_progress * 0.8 + (raw_progress / 100.0) * 15.0)
+
+                # Only update if progress increased significantly (at least 0.5%)
+                if progress - last_progress >= 0.5:
+                    if duration > 0:
+                        current_pos = min(duration * 0.95, (progress / 100.0) * duration)
+                    else:
+                        current_pos = 0.0
+                    WhisperService._update_progress_in_db(
+                        app, transcription_id, progress,
+                        current_pos=current_pos,
+                        status_check='transcribing'
+                    )
+                    last_progress = progress
+                time.sleep(2)  # Update every 2 seconds for smoother experience
 
         # Start progress tracking thread
         progress_thread = threading.Thread(target=update_progress, daemon=True)
