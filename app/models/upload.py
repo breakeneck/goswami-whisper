@@ -1,4 +1,5 @@
 from datetime import datetime
+from sqlalchemy.dialects.mysql import LONGTEXT
 from app import db
 
 
@@ -45,7 +46,7 @@ class Transcribe(db.Model):
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     upload_id = db.Column(db.Integer, db.ForeignKey('uploads.id'), nullable=False)
-    text = db.Column(db.Text, nullable=True)
+    text = db.Column(LONGTEXT, nullable=True)
     provider = db.Column(db.String(50), nullable=False)  # whisper, faster-whisper
     model = db.Column(db.String(50), nullable=False)  # tiny, base, small, medium, large
     status = db.Column(db.String(50), default='pending')  # pending, processing, completed, error
@@ -84,7 +85,7 @@ class Content(db.Model):
 
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     transcribe_id = db.Column(db.Integer, db.ForeignKey('transcribes.id'), nullable=False)
-    text = db.Column(db.Text, nullable=True)
+    text = db.Column(LONGTEXT, nullable=True)
     provider = db.Column(db.String(50), nullable=False)  # openai, anthropic, gemini, lmstudio
     model = db.Column(db.String(100), nullable=False)  # gpt-4o, claude-sonnet-4-20250514, etc.
     status = db.Column(db.String(50), default='pending')  # pending, processing, completed, error

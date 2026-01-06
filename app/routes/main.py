@@ -1,6 +1,5 @@
-from flask import Blueprint, render_template
-from app.models.transcription import Transcription
-from app.models.upload import Upload
+from flask import Blueprint, render_template, abort
+from app.models.upload import Transcribe, Content
 
 main_bp = Blueprint('main', __name__)
 
@@ -13,6 +12,14 @@ def index():
 
 @main_bp.route('/transcription/<int:id>')
 def view_transcription(id):
-    """View a single transcription (legacy support)."""
-    transcription = Transcription.query.get_or_404(id)
-    return render_template('transcription.html', transcription=transcription)
+    """View a single transcription - redirects to content view."""
+    # Legacy route - try to find corresponding content
+    content = Content.query.get(id)
+    if content:
+        return render_template('transcription.html', transcription=content)
+    # Try to find transcribe
+    transcribe = Transcribe.query.get(id)
+    if transcribe:
+        return render_template('transcription.html', transcription=transcribe)
+    abort(404)
+

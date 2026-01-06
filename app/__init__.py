@@ -36,7 +36,7 @@ def create_app(config_class=None):
     app.register_blueprint(api_bp, url_prefix='/api')
 
     # Import models to register them
-    from app.models import Transcription, Upload, Transcribe, Content
+    from app.models import Upload, Transcribe, Content
 
     # Create database tables
     with app.app_context():
