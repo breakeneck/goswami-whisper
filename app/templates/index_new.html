@@ -61,6 +61,56 @@
         padding: 0.1rem 0.2rem;
         border-radius: 0.2rem;
     }
+    /* Diff highlighting styles */
+    .diff-panel {
+        font-family: monospace;
+        font-size: 0.85rem;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        border: 1px solid #dee2e6;
+    }
+    .diff-added {
+        background-color: #d4edda;
+        color: #155724;
+    }
+    .diff-removed {
+        background-color: #f8d7da;
+        color: #721c24;
+        text-decoration: line-through;
+    }
+    .diff-changed {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+    .diff-line {
+        display: block;
+        padding: 2px 4px;
+        margin: 1px 0;
+    }
+    .compare-item {
+        cursor: pointer;
+        padding: 0.5rem;
+        border: 1px solid #dee2e6;
+        border-radius: 0.25rem;
+        margin-bottom: 0.5rem;
+        transition: all 0.2s;
+    }
+    .compare-item:hover {
+        background-color: #e9ecef;
+    }
+    .compare-item.selected {
+        background-color: #cfe2ff;
+        border-color: #0d6efd;
+    }
+    .compare-item.selected-left {
+        border-left: 4px solid #0d6efd;
+    }
+    .compare-item.selected-right {
+        border-left: 4px solid #198754;
+    }
 </style>
 {% endblock %}
 
@@ -294,6 +344,47 @@
     </div>
 </div>
 
+<!-- Compare Modal -->
+<div class="modal fade" id="compareModal" tabindex="-1">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="compareModalTitle">Compare Texts</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0">
+                <div class="d-flex h-100">
+                    <!-- Left panel selector -->
+                    <div class="border-end p-3" style="width: 300px; background: #f8f9fa; overflow-y: auto;">
+                        <h6 class="mb-3">Select items to compare:</h6>
+                        <div id="compareItemsList"></div>
+                    </div>
+                    <!-- Right panel - diff view -->
+                    <div class="flex-grow-1 p-3" style="overflow-y: auto;">
+                        <div id="diffHeader" class="mb-3 d-none">
+                            <div class="row">
+                                <div class="col-6">
+                                    <span class="badge bg-primary" id="diffLeftLabel">Left</span>
+                                </div>
+                                <div class="col-6">
+                                    <span class="badge bg-success" id="diffRightLabel">Right</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div id="diffContainer" class="d-flex gap-3" style="min-height: 80vh;">
+                            <div class="text-center text-muted py-5 w-100" id="diffPlaceholder">
+                                Select two items from the left panel to compare
+                            </div>
+                            <div class="diff-panel flex-grow-1 d-none" id="diffLeft" style="overflow-y: auto; max-height: 80vh;"></div>
+                            <div class="diff-panel flex-grow-1 d-none" id="diffRight" style="overflow-y: auto; max-height: 80vh;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -419,6 +510,22 @@ function renderUploadsTable() {
 
 function renderTranscribes(transcribes, uploadId) {
     let html = '';
+    const completedTranscribes = transcribes.filter(t => t.status === 'completed' && t.text);
+    const hasMultipleTranscribes = completedTranscribes.length > 1;
+
+    // Add compare button row if multiple completed transcribes
+    if (hasMultipleTranscribes) {
+        html += `
+            <tr class="table-info">
+                <td colspan="6" class="text-center py-2">
+                    <button class="btn btn-sm btn-outline-primary" onclick="openCompareModal('transcribe', ${uploadId})">
+                        <i class="bi bi-file-diff me-1"></i>Compare All Transcriptions (${completedTranscribes.length})
+                    </button>
+                </td>
+            </tr>
+        `;
+    }
+
     transcribes.forEach(t => {
         const hasContents = t.contents && t.contents.length > 0;
         const hasIndexedContent = t.contents?.some(c => c.is_indexed);
@@ -478,7 +585,7 @@ function renderTranscribes(transcribes, uploadId) {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    ${renderContents(t.contents)}
+                                    ${renderContents(t.contents, t.id)}
                                 </tbody>
                             </table>
                         </div>
@@ -490,8 +597,24 @@ function renderTranscribes(transcribes, uploadId) {
     return html;
 }
 
-function renderContents(contents) {
+function renderContents(contents, transcribeId) {
     let html = '';
+    const completedContents = contents.filter(c => c.status === 'completed' && c.text);
+    const hasMultipleContents = completedContents.length > 1;
+
+    // Add compare button row if multiple completed contents
+    if (hasMultipleContents) {
+        html += `
+            <tr class="table-warning">
+                <td colspan="6" class="text-center py-2">
+                    <button class="btn btn-sm btn-outline-success" onclick="openCompareModal('content', ${transcribeId})">
+                        <i class="bi bi-file-diff me-1"></i>Compare All Formattings (${completedContents.length})
+                    </button>
+                </td>
+            </tr>
+        `;
+    }
+
     contents.forEach(c => {
         const rowClass = c.is_indexed ? 'indexed-row' : '';
 
@@ -1028,6 +1151,221 @@ function formatDate(isoString) {
     if (!isoString) return '-';
     const date = new Date(isoString);
     return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+}
+
+// ============ Compare Functionality ============
+let compareState = {
+    type: null,  // 'transcribe' or 'content'
+    parentId: null,
+    items: [],
+    selectedLeft: null,
+    selectedRight: null
+};
+
+async function openCompareModal(type, parentId) {
+    compareState.type = type;
+    compareState.parentId = parentId;
+    compareState.items = [];
+    compareState.selectedLeft = null;
+    compareState.selectedRight = null;
+
+    // Get items to compare
+    if (type === 'transcribe') {
+        // Find upload and get its transcribes
+        const upload = uploadsData.find(u => u.id === parentId);
+        if (upload) {
+            compareState.items = upload.transcribes.filter(t => t.status === 'completed' && t.text);
+        }
+        document.getElementById('compareModalTitle').textContent = 'Compare Transcriptions';
+    } else {
+        // Find transcribe and get its contents
+        for (const upload of uploadsData) {
+            const transcribe = upload.transcribes?.find(t => t.id === parentId);
+            if (transcribe) {
+                compareState.items = transcribe.contents.filter(c => c.status === 'completed' && c.text);
+                break;
+            }
+        }
+        document.getElementById('compareModalTitle').textContent = 'Compare Formattings';
+    }
+
+    renderCompareItemsList();
+    resetDiffView();
+
+    new bootstrap.Modal(document.getElementById('compareModal')).show();
+}
+
+function renderCompareItemsList() {
+    const listEl = document.getElementById('compareItemsList');
+    let html = '';
+
+    compareState.items.forEach((item, index) => {
+        const isLeft = compareState.selectedLeft === index;
+        const isRight = compareState.selectedRight === index;
+        const selectedClass = isLeft ? 'selected selected-left' : (isRight ? 'selected selected-right' : '');
+        const label = isLeft ? '<span class="badge bg-primary ms-1">Left</span>' :
+                      (isRight ? '<span class="badge bg-success ms-1">Right</span>' : '');
+
+        html += `
+            <div class="compare-item ${selectedClass}" onclick="selectCompareItem(${index})">
+                <strong>${escapeHtml(item.provider)}</strong> / ${escapeHtml(item.model)}
+                ${label}
+                <br>
+                <small class="text-muted">
+                    ${formatDate(item.created_at)}
+                    ${item.duration_seconds ? ` • ${formatDuration(item.duration_seconds)}` : ''}
+                </small>
+            </div>
+        `;
+    });
+
+    listEl.innerHTML = html;
+}
+
+function selectCompareItem(index) {
+    if (compareState.selectedLeft === null) {
+        compareState.selectedLeft = index;
+    } else if (compareState.selectedRight === null && index !== compareState.selectedLeft) {
+        compareState.selectedRight = index;
+        showDiff();
+    } else {
+        // Reset and start fresh
+        compareState.selectedLeft = index;
+        compareState.selectedRight = null;
+        resetDiffView();
+    }
+
+    renderCompareItemsList();
+}
+
+function resetDiffView() {
+    document.getElementById('diffPlaceholder').classList.remove('d-none');
+    document.getElementById('diffLeft').classList.add('d-none');
+    document.getElementById('diffRight').classList.add('d-none');
+    document.getElementById('diffHeader').classList.add('d-none');
+}
+
+async function showDiff() {
+    const leftItem = compareState.items[compareState.selectedLeft];
+    const rightItem = compareState.items[compareState.selectedRight];
+
+    // Fetch texts if not already loaded
+    let leftText = leftItem.text;
+    let rightText = rightItem.text;
+
+    if (!leftText || !rightText) {
+        try {
+            const endpoint = compareState.type === 'transcribe' ? '/api/transcribe' : '/api/format';
+
+            if (!leftText) {
+                const resp = await fetch(`${endpoint}/${leftItem.id}/status`);
+                const data = await resp.json();
+                leftText = data.text;
+            }
+
+            if (!rightText) {
+                const resp = await fetch(`${endpoint}/${rightItem.id}/status`);
+                const data = await resp.json();
+                rightText = data.text;
+            }
+        } catch (error) {
+            alert('Error loading text: ' + error.message);
+            return;
+        }
+    }
+
+    // Update labels
+    document.getElementById('diffLeftLabel').textContent = `${leftItem.provider}/${leftItem.model}`;
+    document.getElementById('diffRightLabel').textContent = `${rightItem.provider}/${rightItem.model}`;
+
+    // Compute diff and show
+    const diffResult = computeDiff(leftText, rightText);
+
+    document.getElementById('diffLeft').innerHTML = diffResult.left;
+    document.getElementById('diffRight').innerHTML = diffResult.right;
+
+    document.getElementById('diffPlaceholder').classList.add('d-none');
+    document.getElementById('diffLeft').classList.remove('d-none');
+    document.getElementById('diffRight').classList.remove('d-none');
+    document.getElementById('diffHeader').classList.remove('d-none');
+}
+
+function computeDiff(leftText, rightText) {
+    // Simple line-by-line diff
+    const leftLines = leftText.split('\n');
+    const rightLines = rightText.split('\n');
+
+    // Use a simple LCS-based diff algorithm
+    const lcs = longestCommonSubsequence(leftLines, rightLines);
+
+    let leftHtml = '';
+    let rightHtml = '';
+
+    let li = 0, ri = 0, lcsIdx = 0;
+
+    while (li < leftLines.length || ri < rightLines.length) {
+        if (lcsIdx < lcs.length && li < leftLines.length && leftLines[li] === lcs[lcsIdx] &&
+            ri < rightLines.length && rightLines[ri] === lcs[lcsIdx]) {
+            // Same line in both
+            leftHtml += `<span class="diff-line">${escapeHtml(leftLines[li])}</span>`;
+            rightHtml += `<span class="diff-line">${escapeHtml(rightLines[ri])}</span>`;
+            li++; ri++; lcsIdx++;
+        } else if (lcsIdx < lcs.length && li < leftLines.length && leftLines[li] !== lcs[lcsIdx]) {
+            // Line removed from left
+            leftHtml += `<span class="diff-line diff-removed">${escapeHtml(leftLines[li])}</span>`;
+            rightHtml += `<span class="diff-line"></span>`;
+            li++;
+        } else if (lcsIdx < lcs.length && ri < rightLines.length && rightLines[ri] !== lcs[lcsIdx]) {
+            // Line added in right
+            leftHtml += `<span class="diff-line"></span>`;
+            rightHtml += `<span class="diff-line diff-added">${escapeHtml(rightLines[ri])}</span>`;
+            ri++;
+        } else if (li < leftLines.length) {
+            leftHtml += `<span class="diff-line diff-removed">${escapeHtml(leftLines[li])}</span>`;
+            rightHtml += `<span class="diff-line"></span>`;
+            li++;
+        } else if (ri < rightLines.length) {
+            leftHtml += `<span class="diff-line"></span>`;
+            rightHtml += `<span class="diff-line diff-added">${escapeHtml(rightLines[ri])}</span>`;
+            ri++;
+        }
+    }
+
+    return { left: leftHtml, right: rightHtml };
+}
+
+function longestCommonSubsequence(arr1, arr2) {
+    const m = arr1.length;
+    const n = arr2.length;
+
+    // Create DP table
+    const dp = Array(m + 1).fill(null).map(() => Array(n + 1).fill(0));
+
+    for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+            if (arr1[i - 1] === arr2[j - 1]) {
+                dp[i][j] = dp[i - 1][j - 1] + 1;
+            } else {
+                dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+            }
+        }
+    }
+
+    // Backtrack to find LCS
+    const lcs = [];
+    let i = m, j = n;
+    while (i > 0 && j > 0) {
+        if (arr1[i - 1] === arr2[j - 1]) {
+            lcs.unshift(arr1[i - 1]);
+            i--; j--;
+        } else if (dp[i - 1][j] > dp[i][j - 1]) {
+            i--;
+        } else {
+            j--;
+        }
+    }
+
+    return lcs;
 }
 </script>
 {% endblock %}

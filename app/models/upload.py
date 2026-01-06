@@ -51,6 +51,7 @@ class Transcribe(db.Model):
     status = db.Column(db.String(50), default='pending')  # pending, processing, completed, error
     progress = db.Column(db.Float, default=0.0)
     error_message = db.Column(db.Text, nullable=True)
+    duration_seconds = db.Column(db.Float, nullable=True)  # Processing time in seconds
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     # Relationships
@@ -70,6 +71,7 @@ class Transcribe(db.Model):
             'status': self.status,
             'progress': self.progress,
             'error_message': self.error_message,
+            'duration_seconds': self.duration_seconds,
             'created_at': self.created_at.isoformat() if self.created_at else None,
             'contents': [c.to_dict() for c in self.contents.all()]
         }

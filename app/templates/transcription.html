@@ -30,9 +30,28 @@
                                 <a href="{{ transcription.source_url }}" target="_blank">{{ transcription.source_url[:50] }}...</a>
                             {% endif %}
                         </p>
+                        {% if transcription.provider %}
+                        <p><strong>Transcription:</strong>
+                            <span class="badge bg-primary">{{ transcription.provider }}</span>
+                            <span class="badge bg-secondary">{{ transcription.model or 'N/A' }}</span>
+                        </p>
+                        {% endif %}
+                        {% if transcription.format_provider %}
+                        <p><strong>Formatting:</strong>
+                            <span class="badge bg-success">{{ transcription.format_provider }}</span>
+                            <span class="badge bg-secondary">{{ transcription.format_model or 'N/A' }}</span>
+                        </p>
+                        {% endif %}
                     </div>
                     <div class="col-md-6">
                         <p><strong>Created:</strong> {{ transcription.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+                        {% if transcription.duration_seconds %}
+                        <p><strong>Duration:</strong>
+                            {% set mins = (transcription.duration_seconds // 60)|int %}
+                            {% set secs = (transcription.duration_seconds % 60)|int %}
+                            {{ mins }}:{{ '%02d'|format(secs) }}
+                        </p>
+                        {% endif %}
                     </div>
                 </div>
                 {% if transcription.error_message %}

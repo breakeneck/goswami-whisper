@@ -157,6 +157,18 @@ Transcription:
                 json=payload,
                 stream=True
             )
+
+            # Check for rate limiting errors
+            if response.status_code == 429:
+                raise ValueError("Google Gemini: Rate limit exceeded (too many requests). Please try again later or use a different provider.")
+            elif response.status_code != 200:
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get('error', {}).get('message', response.text)
+                except:
+                    error_msg = response.text
+                raise ValueError(f"Google Gemini error: {error_msg}")
+
             result = ""
             for line in response.iter_lines():
                 if line:
@@ -180,6 +192,11 @@ Transcription:
                 params={"key": api_key},
                 json=payload
             )
+
+            # Check for rate limiting errors
+            if response.status_code == 429:
+                raise ValueError("Google Gemini: Rate limit exceeded (too many requests). Please try again later or use a different provider.")
+
             response.raise_for_status()
             data = response.json()
             return data['candidates'][0]['content']['parts'][0]['text']

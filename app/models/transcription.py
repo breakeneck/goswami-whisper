@@ -3,7 +3,7 @@ from app import db
 
 
 class Transcription(db.Model):
-    """Model for storing transcription data."""
+    """Model for storing transcription data (legacy)."""
 
     __tablename__ = 'transcriptions'
 

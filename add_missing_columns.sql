@@ -11,3 +11,7 @@ ALTER TABLE transcriptions
 ALTER TABLE contents
     ADD COLUMN IF NOT EXISTS duration_seconds FLOAT DEFAULT NULL;
 
+-- Add missing columns to transcribes table
+ALTER TABLE transcribes
+    ADD COLUMN IF NOT EXISTS duration_seconds FLOAT DEFAULT NULL;
+
