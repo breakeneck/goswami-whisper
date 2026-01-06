@@ -606,6 +606,9 @@ function renderContents(contents, transcribeId) {
                             <button class="btn btn-outline-info action-btn" onclick="viewTextById('content', ${c.id})" title="View">
                                 <i class="bi bi-eye"></i>
                             </button>
+                            <button class="btn btn-outline-primary action-btn" onclick="downloadContent(${c.id})" title="Download">
+                                <i class="bi bi-download"></i>
+                            </button>
                             ${!c.is_indexed ? `
                                 <button class="btn btn-outline-success action-btn" onclick="indexContent(${c.id})" title="Index">
                                     <i class="bi bi-database-add"></i>
@@ -1050,6 +1053,35 @@ async function viewTextById(type, id) {
         new bootstrap.Modal(document.getElementById('viewTextModal')).show();
     } catch (error) {
         alert('Error loading text: ' + error.message);
+    }
+}
+
+// Download content as .txt file
+async function downloadContent(contentId) {
+    try {
+        const response = await fetch(`/api/format/${contentId}/status`);
+        if (!response.ok) throw new Error('Failed to load content');
+
+        const data = await response.json();
+        if (!data.text) {
+            alert('No text available to download');
+            return;
+        }
+
+        // Create a blob with the text content
+        const blob = new Blob([data.text], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+
+        // Create download link and trigger download
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `formatted_content_${contentId}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+    } catch (error) {
+        alert('Error downloading content: ' + error.message);
     }
 }
 
