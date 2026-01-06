@@ -44,6 +44,7 @@ CREATE TABLE IF NOT EXISTS contents (
     progress FLOAT DEFAULT 0.0,
     error_message TEXT,
     is_indexed BOOLEAN DEFAULT FALSE,
+    duration_seconds FLOAT,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (transcribe_id) REFERENCES transcribes(id) ON DELETE CASCADE,
     INDEX idx_transcribe_id (transcribe_id),

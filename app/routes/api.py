@@ -270,10 +270,13 @@ def process_formatting_async(app, content_id, raw_text, provider, model):
             content.status = 'processing'
             db.session.commit()
 
+            start_time = time.time()
             formatted_text = FormatService.format_text(raw_text, provider, model)
+            duration = time.time() - start_time
 
             content.text = formatted_text
             content.status = 'completed'
+            content.duration_seconds = duration
             db.session.commit()
 
         except Exception as e:
@@ -297,6 +300,7 @@ def format_with_streaming(content_id):
     def generate():
         try:
             full_text = []
+            start_time = time.time()
 
             def stream_callback(text_chunk):
                 full_text.append(text_chunk)
@@ -309,15 +313,18 @@ def format_with_streaming(content_id):
                 stream_callback=stream_callback
             )
 
+            duration = time.time() - start_time
+
             # Save the final text
             final_text = ''.join(full_text)
             with current_app.app_context():
                 content_db = Content.query.get(content_id)
                 content_db.text = final_text
                 content_db.status = 'completed'
+                content_db.duration_seconds = duration
                 db.session.commit()
 
-            yield f"data: {json.dumps({'done': True})}\n\n"
+            yield f"data: {json.dumps({'done': True, 'duration_seconds': duration})}\n\n"
 
         except Exception as e:
             with current_app.app_context():
@@ -374,6 +381,8 @@ def start_indexing():
         return jsonify({'error': 'This upload is already indexed'}), 400
 
     try:
+        start_time = time.time()
+
         # Index the content
         EmbeddingService.index_content(
             upload_id=upload.id,
@@ -388,9 +397,12 @@ def start_indexing():
             }
         )
 
+        duration = time.time() - start_time
+
         # Mark as indexed
         content.is_indexed = True
         upload.is_indexed = True
+        upload.index_duration_seconds = duration
         db.session.commit()
 
         return jsonify({'message': 'Content indexed successfully'}), 200

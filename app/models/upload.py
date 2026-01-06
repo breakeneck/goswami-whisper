@@ -106,6 +106,7 @@ class Content(db.Model):
             'progress': self.progress,
             'error_message': self.error_message,
             'is_indexed': self.is_indexed,
+            'duration_seconds': self.duration_seconds,
             'created_at': self.created_at.isoformat() if self.created_at else None,
         }
 
