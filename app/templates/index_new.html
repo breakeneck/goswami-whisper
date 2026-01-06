@@ -1195,7 +1195,16 @@ async function openCompareModal(type, parentId) {
         for (const upload of uploadsData) {
             const transcribe = upload.transcribes?.find(t => t.id === parentId);
             if (transcribe) {
-                compareState.items = transcribe.contents.filter(c => c.status === 'completed' && c.text);
+                // Add raw transcribe as first item
+                compareState.items = [{
+                    id: transcribe.id,
+                    provider: 'Transcribe',
+                    model: '',
+                    text: transcribe.text,
+                    isRawTranscribe: true
+                }];
+                // Add formatted contents
+                compareState.items.push(...transcribe.contents.filter(c => c.status === 'completed' && c.text));
                 break;
             }
         }
@@ -1228,7 +1237,7 @@ function renderCompareButtons() {
 
         html += `
             <button class="btn btn-sm ${btnClass} compare-btn ${selectedClass}" onclick="selectCompareItem(${index})">
-                ${escapeHtml(item.provider)}/${escapeHtml(item.model)}
+                ${item.isRawTranscribe ? 'Transcribe' : escapeHtml(item.provider) + '/' + escapeHtml(item.model)}
             </button>
         `;
     });
@@ -1276,15 +1285,15 @@ async function showDiff() {
 
     if (!leftText || !rightText) {
         try {
-            const endpoint = compareState.type === 'transcribe' ? '/api/transcribe' : '/api/format';
-
             if (!leftText) {
+                const endpoint = leftItem.isRawTranscribe ? '/api/transcribe' : (compareState.type === 'transcribe' ? '/api/transcribe' : '/api/format');
                 const resp = await fetch(`${endpoint}/${leftItem.id}/status`);
                 const data = await resp.json();
                 leftText = data.text;
             }
 
             if (!rightText) {
+                const endpoint = rightItem.isRawTranscribe ? '/api/transcribe' : (compareState.type === 'transcribe' ? '/api/transcribe' : '/api/format');
                 const resp = await fetch(`${endpoint}/${rightItem.id}/status`);
                 const data = await resp.json();
                 rightText = data.text;
@@ -1296,8 +1305,10 @@ async function showDiff() {
     }
 
     // Update labels
-    document.getElementById('diffLeftLabel').textContent = `${leftItem.provider}/${leftItem.model}`;
-    document.getElementById('diffRightLabel').textContent = `${rightItem.provider}/${rightItem.model}`;
+    const leftLabel = leftItem.isRawTranscribe ? 'Transcribe' : `${leftItem.provider}/${leftItem.model}`;
+    const rightLabel = rightItem.isRawTranscribe ? 'Transcribe' : `${rightItem.provider}/${rightItem.model}`;
+    document.getElementById('diffLeftLabel').textContent = leftLabel;
+    document.getElementById('diffRightLabel').textContent = rightLabel;
 
     // Compute unified diff showing only differences
     const diffHtml = computeUnifiedDiff(leftText, rightText);
