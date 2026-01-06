@@ -66,36 +66,6 @@
 
 {% block content %}
 <div class="row">
-    <!-- Header with Search and Upload -->
-    <div class="col-12 mb-4">
-        <div class="card">
-            <div class="card-body">
-                <div class="row align-items-center">
-                    <div class="col-md-6">
-                        <h2 class="mb-0">
-                            <i class="bi bi-mic-fill text-primary"></i> Goswami Whisper
-                        </h2>
-                        <small class="text-muted">Transcribe, format, and search Vedic lectures</small>
-                    </div>
-                    <div class="col-md-6">
-                        <div class="d-flex gap-2 justify-content-md-end mt-3 mt-md-0">
-                            <div class="input-group" style="max-width: 300px;">
-                                <input type="text" class="form-control" id="searchInput"
-                                       placeholder="Search transcriptions...">
-                                <button class="btn btn-outline-primary" type="button" id="searchBtn">
-                                    <i class="bi bi-search"></i>
-                                </button>
-                            </div>
-                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
-                                <i class="bi bi-upload me-1"></i> Upload
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
     <!-- Search Results (hidden by default) -->
     <div class="col-12 mb-4" id="searchResults" style="display: none;">
         <div class="card">
@@ -118,9 +88,21 @@
                 <h5 class="mb-0">
                     <i class="bi bi-files me-2"></i>All Uploads
                 </h5>
-                <button class="btn btn-sm btn-outline-primary" id="refreshBtn">
-                    <i class="bi bi-arrow-clockwise"></i> Refresh
-                </button>
+                <div class="d-flex gap-2">
+                    <div class="input-group" style="max-width: 250px;">
+                        <input type="text" class="form-control form-control-sm" id="searchInput"
+                               placeholder="Search transcriptions...">
+                        <button class="btn btn-outline-light btn-sm" type="button" id="searchBtn">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                    <button class="btn btn-light btn-sm" data-bs-toggle="modal" data-bs-target="#uploadModal">
+                        <i class="bi bi-upload me-1"></i> Upload
+                    </button>
+                    <button class="btn btn-outline-light btn-sm" id="refreshBtn">
+                        <i class="bi bi-arrow-clockwise"></i>
+                    </button>
+                </div>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive">
@@ -415,6 +397,7 @@ function renderUploadsTable() {
                                     <tr>
                                         <th style="width: 30px;"></th>
                                         <th>Provider/Model</th>
+                                        <th>Duration</th>
                                         <th>Status</th>
                                         <th>Created</th>
                                         <th>Actions</th>
@@ -449,6 +432,7 @@ function renderTranscribes(transcribes, uploadId) {
                 <td>
                     <strong>${escapeHtml(t.provider)}</strong> / ${escapeHtml(t.model)}
                 </td>
+                <td>${formatDuration(t.duration_seconds)}</td>
                 <td>
                     ${renderStatus(t.status, t.progress)}
                 </td>
@@ -456,7 +440,7 @@ function renderTranscribes(transcribes, uploadId) {
                 <td>
                     <div class="btn-group btn-group-sm">
                         ${t.status === 'completed' && t.text ? `
-                            <button class="btn btn-outline-info action-btn" onclick="viewText('Transcription', ${JSON.stringify(t.text).replace(/'/g, "\\'")})" title="View">
+                            <button class="btn btn-outline-info action-btn" onclick="viewTextById('transcribe', ${t.id})" title="View">
                                 <i class="bi bi-eye"></i>
                             </button>
                             <button class="btn btn-outline-primary action-btn" onclick="openFormatModal(${t.id})" title="Format">
@@ -480,12 +464,13 @@ function renderTranscribes(transcribes, uploadId) {
         if (hasContents) {
             html += `
                 <tr class="nested-table" id="contents-${t.id}">
-                    <td colspan="5" class="p-0">
+                    <td colspan="6" class="p-0">
                         <div class="child-table">
                             <table class="table table-sm mb-0">
                                 <thead class="table-light">
                                     <tr>
                                         <th>Provider/Model</th>
+                                        <th>Duration</th>
                                         <th>Status</th>
                                         <th>Indexed</th>
                                         <th>Created</th>
@@ -515,6 +500,7 @@ function renderContents(contents) {
                 <td>
                     <strong>${escapeHtml(c.provider)}</strong> / ${escapeHtml(c.model)}
                 </td>
+                <td>${formatDuration(c.duration_seconds)}</td>
                 <td>
                     ${renderStatus(c.status, c.progress)}
                 </td>
@@ -525,7 +511,7 @@ function renderContents(contents) {
                 <td>
                     <div class="btn-group btn-group-sm">
                         ${c.status === 'completed' && c.text ? `
-                            <button class="btn btn-outline-info action-btn" onclick="viewText('Formatted Content', ${JSON.stringify(c.text).replace(/'/g, "\\'")})" title="View">
+                            <button class="btn btn-outline-info action-btn" onclick="viewTextById('content', ${c.id})" title="View">
                                 <i class="bi bi-eye"></i>
                             </button>
                             ${!c.is_indexed ? `
@@ -937,6 +923,30 @@ function viewText(title, text) {
     document.getElementById('viewTextTitle').textContent = title;
     document.getElementById('viewTextContent').textContent = text;
     new bootstrap.Modal(document.getElementById('viewTextModal')).show();
+}
+
+// View text by fetching from API (avoids JS escaping issues)
+async function viewTextById(type, id) {
+    try {
+        let response;
+        let title;
+        if (type === 'transcribe') {
+            response = await fetch(`/api/transcribe/${id}/status`);
+            title = 'Transcription';
+        } else {
+            response = await fetch(`/api/format/${id}/status`);
+            title = 'Formatted Content';
+        }
+
+        if (!response.ok) throw new Error('Failed to load text');
+
+        const data = await response.json();
+        document.getElementById('viewTextTitle').textContent = title;
+        document.getElementById('viewTextContent').textContent = data.text || 'No text available';
+        new bootstrap.Modal(document.getElementById('viewTextModal')).show();
+    } catch (error) {
+        alert('Error loading text: ' + error.message);
+    }
 }
 
 // Search

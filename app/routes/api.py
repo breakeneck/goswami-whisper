@@ -6,6 +6,7 @@ import os
 import uuid
 import threading
 import json
+import time
 from app import db
 from app.models.upload import Upload, Transcribe, Content
 from app.services.transcribe_service import TranscribeService
@@ -167,6 +168,8 @@ def process_transcription_async(app, transcribe_id, file_path, provider, model):
             transcribe.progress = 0.0
             db.session.commit()
 
+            start_time = time.time()
+
             def progress_callback(progress):
                 # Update progress in database
                 from sqlalchemy import text
@@ -177,16 +180,19 @@ def process_transcription_async(app, transcribe_id, file_path, provider, model):
                     )
                     conn.commit()
 
-            text = TranscribeService.transcribe(
+            text_result = TranscribeService.transcribe(
                 file_path,
                 provider,
                 model,
                 progress_callback=progress_callback
             )
 
-            transcribe.text = text
+            duration = time.time() - start_time
+
+            transcribe.text = text_result
             transcribe.status = 'completed'
             transcribe.progress = 100.0
+            transcribe.duration_seconds = duration
             db.session.commit()
 
         except Exception as e:

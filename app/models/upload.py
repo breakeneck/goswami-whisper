@@ -89,6 +89,7 @@ class Content(db.Model):
     progress = db.Column(db.Float, default=0.0)
     error_message = db.Column(db.Text, nullable=True)
     is_indexed = db.Column(db.Boolean, default=False)
+    duration_seconds = db.Column(db.Float, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
     def __repr__(self):
