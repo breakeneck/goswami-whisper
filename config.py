@@ -34,13 +34,43 @@ class Config:
     # Anthropic (Claude)
     ANTHROPIC_API_KEY = os.environ.get('ANTHROPIC_API_KEY', '')
 
-    # LLM Provider for text formatting: 'anthropic' (Claude) or 'openai' (GPT)
-    # Claude has 200K context window, better for long transcriptions
-    LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'anthropic')
+    # Google Gemini
+    GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
 
-    # Whisper
-    WHISPER_MODEL = os.environ.get('WHISPER_MODEL', 'base')
-    WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large']
+    # LM Studio
+    LMSTUDIO_BASE_URL = os.environ.get('LMSTUDIO_BASE_URL', 'http://localhost:1234/v1')
+
+    # Transcription providers and models
+    TRANSCRIBE_PROVIDERS = {
+        'whisper': {
+            'name': 'OpenAI Whisper',
+            'models': ['tiny', 'base', 'small', 'medium', 'large']
+        },
+        'faster-whisper': {
+            'name': 'Faster Whisper',
+            'models': ['tiny', 'base', 'small', 'medium', 'large-v2', 'large-v3']
+        }
+    }
+
+    # Formatting providers and models
+    FORMAT_PROVIDERS = {
+        'openai': {
+            'name': 'OpenAI',
+            'models': ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo', 'gpt-3.5-turbo']
+        },
+        'anthropic': {
+            'name': 'Anthropic (Claude)',
+            'models': ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307']
+        },
+        'gemini': {
+            'name': 'Google Gemini',
+            'models': ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
+        },
+        'lmstudio': {
+            'name': 'LM Studio (Local)',
+            'models': []  # Will be loaded dynamically
+        }
+    }
 
     # ChromaDB
     CHROMA_PERSIST_DIR = os.environ.get('CHROMA_PERSIST_DIR', os.path.join(os.path.dirname(__file__), 'chroma_db'))

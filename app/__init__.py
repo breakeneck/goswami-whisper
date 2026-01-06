@@ -29,10 +29,14 @@ def create_app(config_class=None):
     migrate.init_app(app, db)
 
     # Register blueprints
-    from app.routes import main_bp, upload_bp, search_bp
+    from app.routes import main_bp, upload_bp, search_bp, api_bp
     app.register_blueprint(main_bp)
     app.register_blueprint(upload_bp, url_prefix='/upload')
     app.register_blueprint(search_bp, url_prefix='/search')
+    app.register_blueprint(api_bp, url_prefix='/api')
+
+    # Import models to register them
+    from app.models import Transcription, Upload, Transcribe, Content
 
     # Create database tables
     with app.app_context():

@@ -1,0 +1,1024 @@
+{% extends "base.html" %}
+
+{% block title %}Home - Goswami Whisper{% endblock %}
+
+{% block extra_css %}
+<style>
+    .upload-table th, .upload-table td {
+        vertical-align: middle;
+    }
+    .child-table {
+        background-color: #f8f9fa;
+        margin-left: 30px;
+    }
+    .indexed-row {
+        background-color: #d4edda !important;
+    }
+    .has-indexed-child {
+        background-color: #e8f5e9 !important;
+    }
+    .expand-btn {
+        cursor: pointer;
+        width: 24px;
+    }
+    .expand-btn i {
+        transition: transform 0.2s;
+    }
+    .expand-btn.expanded i {
+        transform: rotate(90deg);
+    }
+    .nested-table {
+        display: none;
+    }
+    .nested-table.show {
+        display: table-row;
+    }
+    .progress-container {
+        min-width: 100px;
+    }
+    .action-btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+    .modal-lg-custom {
+        max-width: 700px;
+    }
+    .status-pending { color: #6c757d; }
+    .status-processing { color: #ffc107; }
+    .status-completed { color: #28a745; }
+    .status-error { color: #dc3545; }
+    .streaming-text {
+        white-space: pre-wrap;
+        font-family: monospace;
+        background: #f8f9fa;
+        padding: 1rem;
+        border-radius: 0.5rem;
+        max-height: 400px;
+        overflow-y: auto;
+    }
+    .search-highlight {
+        background-color: #fff3cd;
+        padding: 0.1rem 0.2rem;
+        border-radius: 0.2rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <!-- Header with Search and Upload -->
+    <div class="col-12 mb-4">
+        <div class="card">
+            <div class="card-body">
+                <div class="row align-items-center">
+                    <div class="col-md-6">
+                        <h2 class="mb-0">
+                            <i class="bi bi-mic-fill text-primary"></i> Goswami Whisper
+                        </h2>
+                        <small class="text-muted">Transcribe, format, and search Vedic lectures</small>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="d-flex gap-2 justify-content-md-end mt-3 mt-md-0">
+                            <div class="input-group" style="max-width: 300px;">
+                                <input type="text" class="form-control" id="searchInput"
+                                       placeholder="Search transcriptions...">
+                                <button class="btn btn-outline-primary" type="button" id="searchBtn">
+                                    <i class="bi bi-search"></i>
+                                </button>
+                            </div>
+                            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#uploadModal">
+                                <i class="bi bi-upload me-1"></i> Upload
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search Results (hidden by default) -->
+    <div class="col-12 mb-4" id="searchResults" style="display: none;">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="bi bi-search me-2"></i>Search Results</h5>
+                <button class="btn btn-sm btn-outline-secondary" id="clearSearch">
+                    <i class="bi bi-x"></i> Clear
+                </button>
+            </div>
+            <div class="card-body" id="searchResultsBody">
+                <!-- Search results will be inserted here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Uploads Table -->
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="bi bi-files me-2"></i>All Uploads
+                </h5>
+                <button class="btn btn-sm btn-outline-primary" id="refreshBtn">
+                    <i class="bi bi-arrow-clockwise"></i> Refresh
+                </button>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover upload-table mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 30px;"></th>
+                                <th>Filename</th>
+                                <th>Duration</th>
+                                <th>Status</th>
+                                <th>Created</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="uploadsTableBody">
+                            <!-- Data will be loaded via JavaScript -->
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-center py-4 text-muted" id="noUploadsMessage" style="display: none;">
+                    <i class="bi bi-inbox display-4"></i>
+                    <p class="mt-2">No uploads yet. Click Upload to add your first recording!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1">
+    <div class="modal-dialog modal-lg-custom">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-upload me-2"></i>Upload Recording</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="uploadForm">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-file-earmark-music me-1"></i>Upload Audio/Video File
+                        </label>
+                        <input type="file" class="form-control" name="file" id="fileInput"
+                               accept=".mp3,.mp4,.wav,.webm,.m4a,.ogg,.flac">
+                        <div class="form-text">
+                            Supported formats: MP3, MP4, WAV, WebM, M4A, OGG, FLAC (max 500MB)
+                        </div>
+                    </div>
+
+                    <div class="text-center my-3">
+                        <span class="bg-white px-3 text-muted">OR</span>
+                        <hr class="mt-n3">
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-link-45deg me-1"></i>Enter URL (YouTube, etc.)
+                        </label>
+                        <input type="url" class="form-control" name="url" id="urlInput"
+                               placeholder="https://youtube.com/watch?v=...">
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="uploadSubmitBtn">
+                    <i class="bi bi-upload me-1"></i>Upload
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Transcribe Modal -->
+<div class="modal fade" id="transcribeModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-soundwave me-2"></i>Transcribe</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="transcribeUploadId">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Provider</label>
+                    <select class="form-select" id="transcribeProvider">
+                        <option value="whisper">OpenAI Whisper</option>
+                        <option value="faster-whisper">Faster Whisper</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Model</label>
+                    <select class="form-select" id="transcribeModel">
+                        <!-- Models will be populated dynamically -->
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="transcribeSubmitBtn">
+                    <i class="bi bi-play-fill me-1"></i>Start Transcription
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Format Modal -->
+<div class="modal fade" id="formatModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-magic me-2"></i>Format</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="formatTranscribeId">
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Provider</label>
+                    <select class="form-select" id="formatProvider">
+                        <option value="anthropic">Anthropic (Claude)</option>
+                        <option value="openai">OpenAI</option>
+                        <option value="gemini">Google Gemini</option>
+                        <option value="lmstudio">LM Studio (Local)</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Model</label>
+                    <select class="form-select" id="formatModel">
+                        <!-- Models will be populated dynamically -->
+                    </select>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="formatSubmitBtn">
+                    <i class="bi bi-play-fill me-1"></i>Start Formatting
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Progress Modal -->
+<div class="modal fade" id="progressModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="progressModalTitle">Processing...</h5>
+            </div>
+            <div class="modal-body">
+                <div id="progressContent">
+                    <div class="text-center py-4">
+                        <div class="spinner-border text-primary mb-3" role="status">
+                            <span class="visually-hidden">Loading...</span>
+                        </div>
+                        <div class="progress mb-3" style="height: 25px;">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated"
+                                 role="progressbar" id="progressBar" style="width: 0%">
+                                <span id="progressText">0%</span>
+                            </div>
+                        </div>
+                        <p class="text-muted" id="progressStatus">Initializing...</p>
+                    </div>
+                </div>
+                <div id="streamingContent" style="display: none;">
+                    <div class="streaming-text" id="streamingText"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- View Text Modal -->
+<div class="modal fade" id="viewTextModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="viewTextTitle">View Text</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <pre class="streaming-text" id="viewTextContent" style="max-height: 70vh;"></pre>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Global state
+let providersConfig = {};
+let uploadsData = [];
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    loadProviders();
+    loadUploads();
+    setupEventListeners();
+});
+
+// Load provider configuration
+async function loadProviders() {
+    try {
+        const response = await fetch('/api/config/providers');
+        providersConfig = await response.json();
+        updateTranscribeModels();
+        updateFormatModels();
+    } catch (error) {
+        console.error('Error loading providers:', error);
+    }
+}
+
+// Load all uploads
+async function loadUploads() {
+    try {
+        const response = await fetch('/api/uploads');
+        uploadsData = await response.json();
+        renderUploadsTable();
+    } catch (error) {
+        console.error('Error loading uploads:', error);
+    }
+}
+
+// Render uploads table
+function renderUploadsTable() {
+    const tbody = document.getElementById('uploadsTableBody');
+    const noUploadsMsg = document.getElementById('noUploadsMessage');
+
+    if (uploadsData.length === 0) {
+        tbody.innerHTML = '';
+        noUploadsMsg.style.display = 'block';
+        return;
+    }
+
+    noUploadsMsg.style.display = 'none';
+
+    let html = '';
+    uploadsData.forEach(upload => {
+        const hasTranscribes = upload.transcribes && upload.transcribes.length > 0;
+        const isIndexed = upload.is_indexed;
+        const rowClass = isIndexed ? 'indexed-row' : (hasIndexedChild(upload) ? 'has-indexed-child' : '');
+
+        html += `
+            <tr class="${rowClass}" data-upload-id="${upload.id}">
+                <td class="expand-btn" onclick="toggleExpand(this, ${upload.id})">
+                    ${hasTranscribes ? '<i class="bi bi-chevron-right"></i>' : ''}
+                </td>
+                <td>
+                    <i class="bi bi-file-earmark-music me-1"></i>
+                    ${escapeHtml(upload.original_filename || upload.filename)}
+                    ${upload.source_url ? `<br><small class="text-muted"><i class="bi bi-link-45deg"></i> ${escapeHtml(upload.source_url.substring(0, 50))}...</small>` : ''}
+                </td>
+                <td>${formatDuration(upload.duration_seconds)}</td>
+                <td>
+                    ${isIndexed ? '<span class="badge bg-success"><i class="bi bi-check-circle"></i> Indexed</span>' :
+                      hasTranscribes ? '<span class="badge bg-info">Has Transcriptions</span>' :
+                      '<span class="badge bg-secondary">Pending</span>'}
+                </td>
+                <td>${formatDate(upload.created_at)}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-primary action-btn" onclick="openTranscribeModal(${upload.id})" title="Transcribe">
+                            <i class="bi bi-soundwave"></i>
+                        </button>
+                        ${isIndexed ? `
+                            <button class="btn btn-outline-danger action-btn" onclick="removeIndex(${upload.id})" title="Remove Index">
+                                <i class="bi bi-x-circle"></i>
+                            </button>
+                        ` : ''}
+                        <button class="btn btn-outline-danger action-btn" onclick="deleteUpload(${upload.id})" title="Delete">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+
+        // Add nested transcriptions row
+        if (hasTranscribes) {
+            html += `
+                <tr class="nested-table" id="transcribes-${upload.id}">
+                    <td colspan="6" class="p-0">
+                        <div class="child-table">
+                            <table class="table table-sm mb-0">
+                                <thead class="table-secondary">
+                                    <tr>
+                                        <th style="width: 30px;"></th>
+                                        <th>Provider/Model</th>
+                                        <th>Status</th>
+                                        <th>Created</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${renderTranscribes(upload.transcribes, upload.id)}
+                                </tbody>
+                            </table>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+    });
+
+    tbody.innerHTML = html;
+}
+
+function renderTranscribes(transcribes, uploadId) {
+    let html = '';
+    transcribes.forEach(t => {
+        const hasContents = t.contents && t.contents.length > 0;
+        const hasIndexedContent = t.contents?.some(c => c.is_indexed);
+        const rowClass = hasIndexedContent ? 'has-indexed-child' : '';
+
+        html += `
+            <tr class="${rowClass}" data-transcribe-id="${t.id}">
+                <td class="expand-btn" onclick="toggleTranscribeExpand(this, ${t.id})">
+                    ${hasContents ? '<i class="bi bi-chevron-right"></i>' : ''}
+                </td>
+                <td>
+                    <strong>${escapeHtml(t.provider)}</strong> / ${escapeHtml(t.model)}
+                </td>
+                <td>
+                    ${renderStatus(t.status, t.progress)}
+                </td>
+                <td>${formatDate(t.created_at)}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        ${t.status === 'completed' && t.text ? `
+                            <button class="btn btn-outline-info action-btn" onclick="viewText('Transcription', ${JSON.stringify(t.text).replace(/'/g, "\\'")})" title="View">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                            <button class="btn btn-outline-primary action-btn" onclick="openFormatModal(${t.id})" title="Format">
+                                <i class="bi bi-magic"></i>
+                            </button>
+                        ` : ''}
+                        ${t.status === 'processing' ? `
+                            <button class="btn btn-outline-warning action-btn" onclick="checkTranscriptionStatus(${t.id})" title="Check Status">
+                                <i class="bi bi-arrow-clockwise"></i>
+                            </button>
+                        ` : ''}
+                        <button class="btn btn-outline-danger action-btn" onclick="deleteTranscription(${t.id})" title="Delete">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+
+        // Add nested contents row
+        if (hasContents) {
+            html += `
+                <tr class="nested-table" id="contents-${t.id}">
+                    <td colspan="5" class="p-0">
+                        <div class="child-table">
+                            <table class="table table-sm mb-0">
+                                <thead class="table-light">
+                                    <tr>
+                                        <th>Provider/Model</th>
+                                        <th>Status</th>
+                                        <th>Indexed</th>
+                                        <th>Created</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${renderContents(t.contents)}
+                                </tbody>
+                            </table>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
+    });
+    return html;
+}
+
+function renderContents(contents) {
+    let html = '';
+    contents.forEach(c => {
+        const rowClass = c.is_indexed ? 'indexed-row' : '';
+
+        html += `
+            <tr class="${rowClass}" data-content-id="${c.id}">
+                <td>
+                    <strong>${escapeHtml(c.provider)}</strong> / ${escapeHtml(c.model)}
+                </td>
+                <td>
+                    ${renderStatus(c.status, c.progress)}
+                </td>
+                <td>
+                    ${c.is_indexed ? '<span class="badge bg-success"><i class="bi bi-check"></i></span>' : '<span class="badge bg-secondary">No</span>'}
+                </td>
+                <td>${formatDate(c.created_at)}</td>
+                <td>
+                    <div class="btn-group btn-group-sm">
+                        ${c.status === 'completed' && c.text ? `
+                            <button class="btn btn-outline-info action-btn" onclick="viewText('Formatted Content', ${JSON.stringify(c.text).replace(/'/g, "\\'")})" title="View">
+                                <i class="bi bi-eye"></i>
+                            </button>
+                            ${!c.is_indexed ? `
+                                <button class="btn btn-outline-success action-btn" onclick="indexContent(${c.id})" title="Index">
+                                    <i class="bi bi-database-add"></i>
+                                </button>
+                            ` : ''}
+                        ` : ''}
+                        <button class="btn btn-outline-danger action-btn" onclick="deleteContent(${c.id})" title="Delete">
+                            <i class="bi bi-trash"></i>
+                        </button>
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+    return html;
+}
+
+function renderStatus(status, progress) {
+    if (status === 'processing') {
+        return `
+            <div class="progress-container">
+                <div class="progress" style="height: 20px;">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated"
+                         style="width: ${progress || 0}%">${Math.round(progress || 0)}%</div>
+                </div>
+            </div>
+        `;
+    }
+    const statusClasses = {
+        'pending': 'bg-secondary',
+        'completed': 'bg-success',
+        'error': 'bg-danger'
+    };
+    return `<span class="badge ${statusClasses[status] || 'bg-secondary'}">${status}</span>`;
+}
+
+function hasIndexedChild(upload) {
+    if (!upload.transcribes) return false;
+    for (const t of upload.transcribes) {
+        if (t.contents) {
+            for (const c of t.contents) {
+                if (c.is_indexed) return true;
+            }
+        }
+    }
+    return false;
+}
+
+// Toggle expand/collapse
+function toggleExpand(btn, uploadId) {
+    const row = document.getElementById(`transcribes-${uploadId}`);
+    if (row) {
+        row.classList.toggle('show');
+        btn.classList.toggle('expanded');
+    }
+}
+
+function toggleTranscribeExpand(btn, transcribeId) {
+    const row = document.getElementById(`contents-${transcribeId}`);
+    if (row) {
+        row.classList.toggle('show');
+        btn.classList.toggle('expanded');
+    }
+}
+
+// Setup event listeners
+function setupEventListeners() {
+    // Upload form
+    document.getElementById('uploadSubmitBtn').addEventListener('click', handleUpload);
+
+    // Transcribe form
+    document.getElementById('transcribeProvider').addEventListener('change', updateTranscribeModels);
+    document.getElementById('transcribeSubmitBtn').addEventListener('click', handleTranscribe);
+
+    // Format form
+    document.getElementById('formatProvider').addEventListener('change', updateFormatModels);
+    document.getElementById('formatSubmitBtn').addEventListener('click', handleFormat);
+
+    // Refresh button
+    document.getElementById('refreshBtn').addEventListener('click', loadUploads);
+
+    // Search
+    document.getElementById('searchBtn').addEventListener('click', handleSearch);
+    document.getElementById('searchInput').addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') handleSearch();
+    });
+    document.getElementById('clearSearch').addEventListener('click', function() {
+        document.getElementById('searchResults').style.display = 'none';
+        document.getElementById('searchInput').value = '';
+    });
+}
+
+// Update model dropdowns
+function updateTranscribeModels() {
+    const provider = document.getElementById('transcribeProvider').value;
+    const modelSelect = document.getElementById('transcribeModel');
+    const models = providersConfig.transcribe?.[provider]?.models || [];
+
+    modelSelect.innerHTML = models.map(m =>
+        `<option value="${m}">${m}${getModelDescription(provider, m)}</option>`
+    ).join('');
+}
+
+function updateFormatModels() {
+    const provider = document.getElementById('formatProvider').value;
+    const modelSelect = document.getElementById('formatModel');
+    const models = providersConfig.format?.[provider]?.models || [];
+
+    if (models.length === 0 && provider === 'lmstudio') {
+        modelSelect.innerHTML = '<option value="">No models available - Start LM Studio</option>';
+    } else {
+        modelSelect.innerHTML = models.map(m =>
+            `<option value="${m}">${m}</option>`
+        ).join('');
+    }
+}
+
+function getModelDescription(provider, model) {
+    const descriptions = {
+        'tiny': ' (Fastest, less accurate)',
+        'base': ' (Fast, good accuracy)',
+        'small': ' (Balanced)',
+        'medium': ' (Slower, better accuracy)',
+        'large': ' (Slowest, best accuracy)',
+        'large-v2': ' (Best accuracy v2)',
+        'large-v3': ' (Best accuracy v3)'
+    };
+    return descriptions[model] || '';
+}
+
+// Handle upload
+async function handleUpload() {
+    const fileInput = document.getElementById('fileInput');
+    const urlInput = document.getElementById('urlInput');
+
+    if (!fileInput.files[0] && !urlInput.value) {
+        alert('Please select a file or enter a URL');
+        return;
+    }
+
+    const formData = new FormData();
+    if (fileInput.files[0]) {
+        formData.append('file', fileInput.files[0]);
+    } else {
+        formData.append('url', urlInput.value);
+    }
+
+    try {
+        showProgress('Uploading...', 'Preparing your file...');
+
+        const response = await fetch('/api/uploads', {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Upload failed');
+        }
+
+        hideProgress();
+        bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
+        document.getElementById('uploadForm').reset();
+        loadUploads();
+
+    } catch (error) {
+        hideProgress();
+        alert('Error: ' + error.message);
+    }
+}
+
+// Open transcribe modal
+function openTranscribeModal(uploadId) {
+    document.getElementById('transcribeUploadId').value = uploadId;
+    updateTranscribeModels();
+    new bootstrap.Modal(document.getElementById('transcribeModal')).show();
+}
+
+// Handle transcription
+async function handleTranscribe() {
+    const uploadId = document.getElementById('transcribeUploadId').value;
+    const provider = document.getElementById('transcribeProvider').value;
+    const model = document.getElementById('transcribeModel').value;
+
+    try {
+        const response = await fetch('/api/transcribe', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({upload_id: parseInt(uploadId), provider, model})
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Transcription failed');
+        }
+
+        const result = await response.json();
+        bootstrap.Modal.getInstance(document.getElementById('transcribeModal')).hide();
+
+        // Show progress modal and poll for status
+        showTranscriptionProgress(result.id);
+
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+// Show transcription progress
+async function showTranscriptionProgress(transcribeId) {
+    showProgress('Transcribing...', 'This may take several minutes...');
+
+    const pollInterval = setInterval(async () => {
+        try {
+            const response = await fetch(`/api/transcribe/${transcribeId}/status`);
+            const status = await response.json();
+
+            updateProgressBar(status.progress || 0);
+            document.getElementById('progressStatus').textContent =
+                `Status: ${status.status} - ${Math.round(status.progress || 0)}%`;
+
+            if (status.status === 'completed' || status.status === 'error') {
+                clearInterval(pollInterval);
+                hideProgress();
+                loadUploads();
+
+                if (status.status === 'error') {
+                    alert('Transcription error: ' + (status.error_message || 'Unknown error'));
+                }
+            }
+        } catch (error) {
+            clearInterval(pollInterval);
+            hideProgress();
+            alert('Error checking status: ' + error.message);
+        }
+    }, 2000);
+}
+
+// Check transcription status
+async function checkTranscriptionStatus(transcribeId) {
+    showTranscriptionProgress(transcribeId);
+}
+
+// Open format modal
+function openFormatModal(transcribeId) {
+    document.getElementById('formatTranscribeId').value = transcribeId;
+    updateFormatModels();
+    new bootstrap.Modal(document.getElementById('formatModal')).show();
+}
+
+// Handle formatting
+async function handleFormat() {
+    const transcribeId = document.getElementById('formatTranscribeId').value;
+    const provider = document.getElementById('formatProvider').value;
+    const model = document.getElementById('formatModel').value;
+
+    try {
+        const response = await fetch('/api/format', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({transcribe_id: parseInt(transcribeId), provider, model})
+        });
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Formatting failed');
+        }
+
+        const result = await response.json();
+        bootstrap.Modal.getInstance(document.getElementById('formatModal')).hide();
+
+        // Show formatting progress
+        showFormatProgress(result.id);
+
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+// Show format progress
+async function showFormatProgress(contentId) {
+    showProgress('Formatting...', 'Processing with LLM...');
+
+    const pollInterval = setInterval(async () => {
+        try {
+            const response = await fetch(`/api/format/${contentId}/status`);
+            const status = await response.json();
+
+            if (status.status === 'completed' || status.status === 'error') {
+                clearInterval(pollInterval);
+                hideProgress();
+                loadUploads();
+
+                if (status.status === 'error') {
+                    alert('Formatting error: ' + (status.error_message || 'Unknown error'));
+                }
+            }
+        } catch (error) {
+            clearInterval(pollInterval);
+            hideProgress();
+            alert('Error checking status: ' + error.message);
+        }
+    }, 2000);
+}
+
+// Index content
+async function indexContent(contentId) {
+    try {
+        showProgress('Indexing...', 'Adding to vector database...');
+
+        const response = await fetch('/api/index', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({content_id: contentId})
+        });
+
+        hideProgress();
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Indexing failed');
+        }
+
+        loadUploads();
+
+    } catch (error) {
+        hideProgress();
+        alert('Error: ' + error.message);
+    }
+}
+
+// Remove index
+async function removeIndex(uploadId) {
+    if (!confirm('Remove this upload from the search index?')) return;
+
+    try {
+        const response = await fetch(`/api/index/${uploadId}`, {method: 'DELETE'});
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Failed to remove index');
+        }
+
+        loadUploads();
+
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+// Delete operations
+async function deleteUpload(uploadId) {
+    if (!confirm('Delete this upload and all related data?')) return;
+
+    try {
+        const response = await fetch(`/api/uploads/${uploadId}`, {method: 'DELETE'});
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Delete failed');
+        }
+
+        loadUploads();
+
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function deleteTranscription(transcribeId) {
+    if (!confirm('Delete this transcription and all formatted content?')) return;
+
+    try {
+        const response = await fetch(`/api/transcribe/${transcribeId}`, {method: 'DELETE'});
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Delete failed');
+        }
+
+        loadUploads();
+
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+async function deleteContent(contentId) {
+    if (!confirm('Delete this formatted content?')) return;
+
+    try {
+        const response = await fetch(`/api/format/${contentId}`, {method: 'DELETE'});
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Delete failed');
+        }
+
+        loadUploads();
+
+    } catch (error) {
+        alert('Error: ' + error.message);
+    }
+}
+
+// View text
+function viewText(title, text) {
+    document.getElementById('viewTextTitle').textContent = title;
+    document.getElementById('viewTextContent').textContent = text;
+    new bootstrap.Modal(document.getElementById('viewTextModal')).show();
+}
+
+// Search
+async function handleSearch() {
+    const query = document.getElementById('searchInput').value.trim();
+    if (!query) return;
+
+    try {
+        const response = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const results = await response.json();
+
+        const resultsDiv = document.getElementById('searchResults');
+        const resultsBody = document.getElementById('searchResultsBody');
+
+        if (results.length === 0) {
+            resultsBody.innerHTML = '<p class="text-muted">No results found.</p>';
+        } else {
+            resultsBody.innerHTML = results.map(r => `
+                <div class="card mb-2">
+                    <div class="card-body py-2">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div>
+                                <strong>${escapeHtml(r.upload.filename)}</strong>
+                                ${r.score ? `<span class="badge bg-success ms-2">${Math.round(r.score * 100)}% match</span>` : ''}
+                            </div>
+                            <small class="text-muted">${formatDate(r.upload.created_at)}</small>
+                        </div>
+                        <p class="mb-0 mt-1 small text-muted">${escapeHtml(r.snippet)}</p>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        resultsDiv.style.display = 'block';
+
+    } catch (error) {
+        alert('Search error: ' + error.message);
+    }
+}
+
+// Progress modal helpers
+function showProgress(title, status) {
+    document.getElementById('progressModalTitle').textContent = title;
+    document.getElementById('progressStatus').textContent = status;
+    document.getElementById('progressContent').style.display = 'block';
+    document.getElementById('streamingContent').style.display = 'none';
+    updateProgressBar(0);
+    new bootstrap.Modal(document.getElementById('progressModal')).show();
+}
+
+function hideProgress() {
+    const modal = bootstrap.Modal.getInstance(document.getElementById('progressModal'));
+    if (modal) modal.hide();
+}
+
+function updateProgressBar(percent) {
+    const bar = document.getElementById('progressBar');
+    const text = document.getElementById('progressText');
+    bar.style.width = `${percent}%`;
+    text.textContent = `${Math.round(percent)}%`;
+}
+
+// Utility functions
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+}
+
+function formatDuration(seconds) {
+    if (!seconds) return '-';
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+}
+
+function formatDate(isoString) {
+    if (!isoString) return '-';
+    const date = new Date(isoString);
+    return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+}
+</script>
+{% endblock %}
+

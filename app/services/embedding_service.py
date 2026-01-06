@@ -169,3 +169,84 @@ class EmbeddingService:
         if results['ids']:
             collection.delete(ids=results['ids'])
 
+    @classmethod
+    def index_content(cls, upload_id: int, content_id: int, text: str, metadata: dict = None) -> None:
+        """
+        Index formatted content in ChromaDB.
+
+        Args:
+            upload_id: ID of the upload
+            content_id: ID of the content record
+            text: Text to index
+            metadata: Additional metadata to store
+        """
+        if not text:
+            return
+
+        model = cls.get_model()
+        collection = cls.get_collection()
+
+        # Split text into chunks
+        chunks = cls.chunk_text(text)
+
+        if not chunks:
+            return
+
+        # Generate embeddings
+        embeddings = model.encode(chunks).tolist()
+
+        # Prepare documents for ChromaDB
+        ids = [f"content_{content_id}_{i}" for i in range(len(chunks))]
+        base_metadata = {
+            "upload_id": upload_id,
+            "content_id": content_id,
+        }
+        if metadata:
+            base_metadata.update(metadata)
+
+        metadatas = [{**base_metadata, "chunk_index": i} for i in range(len(chunks))]
+
+        # Add to collection
+        collection.add(
+            ids=ids,
+            embeddings=embeddings,
+            documents=chunks,
+            metadatas=metadatas
+        )
+
+    @classmethod
+    def delete_by_upload_id(cls, upload_id: int) -> None:
+        """
+        Delete all indexed chunks for an upload.
+
+        Args:
+            upload_id: ID of the upload to delete
+        """
+        collection = cls.get_collection()
+
+        # Find all chunks for this upload
+        results = collection.get(
+            where={"upload_id": upload_id}
+        )
+
+        if results['ids']:
+            collection.delete(ids=results['ids'])
+
+    @classmethod
+    def delete_by_content_id(cls, content_id: int) -> None:
+        """
+        Delete all indexed chunks for a content record.
+
+        Args:
+            content_id: ID of the content to delete
+        """
+        collection = cls.get_collection()
+
+        # Find all chunks for this content
+        results = collection.get(
+            where={"content_id": content_id}
+        )
+
+        if results['ids']:
+            collection.delete(ids=results['ids'])
+
