@@ -1,6 +1,7 @@
 from openai import OpenAI
 from anthropic import Anthropic
 from flask import current_app
+from app.services.format_service import FormatService
 
 
 class OpenAIService:
@@ -54,10 +55,12 @@ Transcription:
     def _format_with_claude(raw_text: str, prompt: str) -> str:
         """Format text using Claude (Anthropic) - 200K context window."""
         client = OpenAIService.get_anthropic_client()
+        model = "claude-sonnet-4-20250514"
+        max_tokens = FormatService.get_max_output_tokens('anthropic', model)
 
         response = client.messages.create(
-            model="claude-sonnet-4-20250514",
-            max_tokens=16384,  # Much higher limit for long transcriptions
+            model=model,
+            max_tokens=max_tokens,
             messages=[
                 {
                     "role": "user",
@@ -73,9 +76,11 @@ Transcription:
     def _format_with_openai(raw_text: str, prompt: str) -> str:
         """Format text using OpenAI GPT."""
         client = OpenAIService.get_openai_client()
+        model = "gpt-4o"
+        max_tokens = FormatService.get_max_output_tokens('openai', model)
 
         response = client.chat.completions.create(
-            model="gpt-4o",
+            model=model,
             messages=[
                 {
                     "role": "system",
@@ -87,7 +92,7 @@ Transcription:
                 }
             ],
             temperature=0.3,
-            max_tokens=16384  # Increased from 4096
+            max_tokens=max_tokens
         )
 
         return response.choices[0].message.content

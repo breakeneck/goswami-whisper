@@ -5,6 +5,9 @@ from anthropic import Anthropic
 from flask import current_app
 import requests
 
+# Cache for model context lengths to avoid repeated API calls
+_model_context_cache = {}
+
 
 class FormatService:
     """Service for formatting text using LLM models."""
@@ -40,6 +43,194 @@ Transcription:
         )
 
     @staticmethod
+    def get_model_context_length(provider: str, model: str) -> int:
+        """
+        Fetch the real context length for a model from its API.
+
+        Args:
+            provider: Provider name (openai, anthropic, gemini, lmstudio)
+            model: Model identifier
+
+        Returns:
+            Context length in tokens, or a safe default if unavailable
+        """
+        cache_key = f"{provider}:{model}"
+        if cache_key in _model_context_cache:
+            return _model_context_cache[cache_key]
+
+        context_length = None
+
+        try:
+            if provider == 'openai':
+                context_length = FormatService._get_openai_context_length(model)
+            elif provider == 'anthropic':
+                context_length = FormatService._get_anthropic_context_length(model)
+            elif provider == 'gemini':
+                context_length = FormatService._get_gemini_context_length(model)
+            elif provider == 'lmstudio':
+                context_length = FormatService._get_lmstudio_context_length(model)
+        except Exception as e:
+            current_app.logger.warning(f"Failed to fetch context length for {provider}:{model}: {e}")
+
+        # Use safe defaults if API fetch failed
+        if not context_length:
+            context_length = FormatService._get_default_context_length(provider, model)
+
+        _model_context_cache[cache_key] = context_length
+        return context_length
+
+    @staticmethod
+    def _get_openai_context_length(model: str) -> int:
+        """Fetch context length from OpenAI API."""
+        try:
+            client = FormatService.get_openai_client()
+            model_info = client.models.retrieve(model)
+            # OpenAI returns context_window in model info for newer models
+            # For chat models, check for context_window attribute
+            if hasattr(model_info, 'context_window'):
+                return model_info.context_window
+            # Fallback: known OpenAI model context lengths
+            return FormatService._get_openai_known_context(model)
+        except Exception:
+            return FormatService._get_openai_known_context(model)
+
+    @staticmethod
+    def _get_openai_known_context(model: str) -> int:
+        """Known context lengths for OpenAI models."""
+        model_lower = model.lower()
+        # GPT-4o and variants
+        if 'gpt-4o' in model_lower:
+            return 128000
+        # GPT-4 Turbo
+        if 'gpt-4-turbo' in model_lower or 'gpt-4-1106' in model_lower or 'gpt-4-0125' in model_lower:
+            return 128000
+        # GPT-4 32k
+        if 'gpt-4-32k' in model_lower:
+            return 32768
+        # GPT-4
+        if 'gpt-4' in model_lower:
+            return 8192
+        # GPT-3.5 Turbo 16k
+        if 'gpt-3.5-turbo-16k' in model_lower:
+            return 16384
+        # GPT-3.5 Turbo
+        if 'gpt-3.5' in model_lower:
+            return 4096
+        # o1 and o1-mini models
+        if 'o1' in model_lower:
+            return 128000
+        return 8192  # Safe default
+
+    @staticmethod
+    def _get_anthropic_context_length(model: str) -> int:
+        """Get context length for Anthropic models."""
+        model_lower = model.lower()
+        # Claude 3.5 and Claude 3 models have 200K context
+        if 'claude-3' in model_lower or 'claude-sonnet' in model_lower or 'claude-opus' in model_lower or 'claude-haiku' in model_lower:
+            return 200000
+        # Claude 2 models
+        if 'claude-2' in model_lower:
+            return 100000
+        return 100000  # Safe default for Claude
+
+    @staticmethod
+    def _get_gemini_context_length(model: str) -> int:
+        """Fetch context length from Gemini API."""
+        try:
+            api_key = current_app.config.get('GEMINI_API_KEY')
+            if not api_key:
+                return FormatService._get_gemini_known_context(model)
+
+            # Use the models.get endpoint to fetch model info
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}?key={api_key}"
+            response = requests.get(url, timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                # Gemini returns inputTokenLimit and outputTokenLimit
+                input_limit = data.get('inputTokenLimit', 0)
+                if input_limit > 0:
+                    return input_limit
+        except Exception:
+            pass
+        return FormatService._get_gemini_known_context(model)
+
+    @staticmethod
+    def _get_gemini_known_context(model: str) -> int:
+        """Known context lengths for Gemini models."""
+        model_lower = model.lower()
+        if 'gemini-1.5-pro' in model_lower:
+            return 1000000  # 1M tokens
+        if 'gemini-1.5-flash' in model_lower:
+            return 1000000  # 1M tokens
+        if 'gemini-pro' in model_lower:
+            return 32768
+        return 32768  # Safe default
+
+    @staticmethod
+    def _get_lmstudio_context_length(model: str) -> int:
+        """Fetch context length from LM Studio API."""
+        try:
+            base_url = current_app.config.get('LMSTUDIO_BASE_URL', 'http://localhost:1234/v1')
+            response = requests.get(f"{base_url}/models", timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                for model_info in data.get('data', []):
+                    if model_info.get('id') == model:
+                        ctx_len = model_info.get('context_length')
+                        if ctx_len and ctx_len > 0:
+                            return ctx_len
+        except Exception:
+            pass
+        # Fall back to inference from model name
+        return FormatService.infer_context_length_from_model_name(model)
+
+    @staticmethod
+    def _get_default_context_length(provider: str, model: str) -> int:
+        """Get a safe default context length for a provider."""
+        if provider == 'openai':
+            return FormatService._get_openai_known_context(model)
+        elif provider == 'anthropic':
+            return FormatService._get_anthropic_context_length(model)
+        elif provider == 'gemini':
+            return FormatService._get_gemini_known_context(model)
+        elif provider == 'lmstudio':
+            return FormatService.infer_context_length_from_model_name(model)
+        return 4096  # Conservative default
+
+    @staticmethod
+    def get_max_output_tokens(provider: str, model: str, context_length: int = None) -> int:
+        """
+        Calculate appropriate max_tokens for output based on model limits.
+
+        Args:
+            provider: Provider name
+            model: Model identifier
+            context_length: Optional pre-fetched context length
+
+        Returns:
+            Appropriate max_tokens value for the model
+        """
+        if not context_length:
+            context_length = FormatService.get_model_context_length(provider, model)
+
+        # Different providers have different output limits
+        if provider == 'openai':
+            # GPT-4o has 16K output limit, others vary
+            if 'gpt-4o' in model.lower():
+                return 16384
+            return min(16384, context_length // 4)
+        elif provider == 'anthropic':
+            # Claude has up to 8K output tokens by default, can be higher
+            return min(16384, context_length // 4)
+        elif provider == 'gemini':
+            # Gemini 1.5 has 8K output by default, 1.5 Pro has up to 8K
+            return min(8192, context_length // 4)
+        elif provider == 'lmstudio':
+            # Local models - be conservative
+            return min(16384, context_length // 4)
+        return 4096
+
+    @staticmethod
     def format_text(raw_text: str, provider: str, model: str, stream_callback=None, context_length=None) -> str:
         """
         Format raw transcription text using the specified provider and model.
@@ -72,6 +263,7 @@ Transcription:
     def _format_with_openai(raw_text: str, model: str, stream_callback=None) -> str:
         """Format text using OpenAI GPT."""
         client = FormatService.get_openai_client()
+        max_tokens = FormatService.get_max_output_tokens('openai', model)
 
         if stream_callback:
             response = client.chat.completions.create(
@@ -81,7 +273,7 @@ Transcription:
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
                 temperature=0.3,
-                max_tokens=16384,
+                max_tokens=max_tokens,
                 stream=True
             )
             result = ""
@@ -99,7 +291,7 @@ Transcription:
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
                 temperature=0.3,
-                max_tokens=16384
+                max_tokens=max_tokens
             )
             return response.choices[0].message.content
 
@@ -107,11 +299,12 @@ Transcription:
     def _format_with_anthropic(raw_text: str, model: str, stream_callback=None) -> str:
         """Format text using Claude (Anthropic)."""
         client = FormatService.get_anthropic_client()
+        max_tokens = FormatService.get_max_output_tokens('anthropic', model)
 
         if stream_callback:
             with client.messages.stream(
                 model=model,
-                max_tokens=16384,
+                max_tokens=max_tokens,
                 messages=[{"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}],
                 system=FormatService.SYSTEM_PROMPT
             ) as stream:
@@ -123,7 +316,7 @@ Transcription:
         else:
             response = client.messages.create(
                 model=model,
-                max_tokens=16384,
+                max_tokens=max_tokens,
                 messages=[{"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}],
                 system=FormatService.SYSTEM_PROMPT
             )
@@ -136,6 +329,7 @@ Transcription:
         if not api_key:
             raise ValueError("GEMINI_API_KEY not configured")
 
+        max_tokens = FormatService.get_max_output_tokens('gemini', model)
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
         payload = {
@@ -144,7 +338,7 @@ Transcription:
             }],
             "generationConfig": {
                 "temperature": 0.3,
-                "maxOutputTokens": 16384
+                "maxOutputTokens": max_tokens
             }
         }
 
@@ -253,20 +447,86 @@ Transcription:
             return []
 
     @staticmethod
+    def infer_context_length_from_model_name(model_id: str) -> int:
+        """Infer context length from model name based on known patterns."""
+        model_lower = model_id.lower()
+
+        # Qwen models - 128K to 1M context
+        if 'qwen' in model_lower:
+            if '2.5' in model_lower or 'qwen2.5' in model_lower:
+                return 1048576  # 1M context
+            if '2' in model_lower or 'qwen2' in model_lower:
+                return 131072  # 128K context
+            return 32768  # 32K for older Qwen
+
+        # Llama models
+        if 'llama' in model_lower:
+            if '3.2' in model_lower or 'llama-3.2' in model_lower:
+                return 131072  # 128K context
+            if '3.1' in model_lower or 'llama-3.1' in model_lower:
+                return 131072  # 128K context
+            if '3' in model_lower:
+                return 8192  # 8K for Llama 3
+            return 4096  # 4K for older Llama
+
+        # Mistral models
+        if 'mistral' in model_lower:
+            if 'nemo' in model_lower:
+                return 131072  # 128K
+            if 'large' in model_lower:
+                return 131072  # 128K
+            return 32768  # 32K for base Mistral
+
+        # Gemma models
+        if 'gemma' in model_lower:
+            if '2' in model_lower:
+                return 8192
+            return 8192
+
+        # Phi models
+        if 'phi' in model_lower:
+            if '3' in model_lower or 'phi-3' in model_lower:
+                return 131072  # 128K
+            return 4096
+
+        # DeepSeek models
+        if 'deepseek' in model_lower:
+            return 131072  # 128K
+
+        # Yi models
+        if 'yi' in model_lower:
+            if '200k' in model_lower:
+                return 200000
+            return 32768
+
+        # Default
+        return 4096
+
+    @staticmethod
     def get_lmstudio_models_with_info():
         """Get available models from LM Studio with additional info."""
         try:
             base_url = current_app.config.get('LMSTUDIO_BASE_URL', 'http://localhost:1234/v1')
             # Use the models endpoint to get loaded models
-            response = requests.get(f"{base_url}/models")
+            response = requests.get(f"{base_url}/models", timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 models_info = []
                 for model in data.get('data', []):
+                    model_id = model.get('id')
+                    # Prefer API-provided context_length (use it if > 0)
+                    api_context = model.get('context_length')
+                    if api_context and api_context > 0:
+                        context_length = api_context
+                    else:
+                        # Fall back to inference from model name only if API doesn't provide it
+                        context_length = FormatService.infer_context_length_from_model_name(model_id)
+
                     model_info = {
-                        'id': model.get('id'),
-                        'context_length': model.get('context_length', 4096),
-                        'loaded': True
+                        'id': model_id,
+                        'context_length': context_length,
+                        'loaded': True,
+                        'context_source': 'api' if (api_context and api_context > 0) else 'inferred'
                     }
                     models_info.append(model_info)
                 return models_info

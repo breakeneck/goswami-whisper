@@ -290,12 +290,23 @@
                     <label class="form-label fw-bold">Context Window Size</label>
                     <div class="d-flex align-items-center gap-3">
                         <input type="range" class="form-range flex-grow-1" id="formatContextSlider"
-                               min="2048" max="131072" step="2048" value="8192">
+                               min="2048" max="1048576" step="1024" value="8192">
                         <span class="badge bg-primary" id="contextWindowDisplay" style="min-width: 80px;">8K</span>
                     </div>
                     <div class="d-flex justify-content-between mt-1">
                         <small class="text-muted">2K</small>
-                        <small class="text-muted">128K</small>
+                        <small class="text-muted" id="sliderMaxLabel">1M</small>
+                    </div>
+                    <div class="mt-2">
+                        <label class="form-label small text-muted mb-1">Quick presets:</label>
+                        <div class="btn-group btn-group-sm w-100" role="group">
+                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="4096">4K</button>
+                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="8192">8K</button>
+                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="16384">16K</button>
+                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="32768">32K</button>
+                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="65536">64K</button>
+                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="131072">128K</button>
+                        </div>
                     </div>
                     <div class="mt-2 p-2 bg-light rounded" id="tokenInfoPanel">
                         <div class="d-flex justify-content-between align-items-center">
@@ -728,6 +739,22 @@ function setupEventListeners() {
     // Context window slider
     document.getElementById('formatContextSlider').addEventListener('input', updateContextSliderDisplay);
 
+    // Context preset buttons
+    document.querySelectorAll('.context-preset').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const value = parseInt(this.dataset.value);
+            const slider = document.getElementById('formatContextSlider');
+            const maxVal = parseInt(slider.max);
+            if (value <= maxVal) {
+                slider.value = value;
+                updateContextSliderDisplay();
+                // Highlight the selected preset
+                document.querySelectorAll('.context-preset').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+            }
+        });
+    });
+
     // Refresh button
     document.getElementById('refreshBtn').addEventListener('click', loadUploads);
 
@@ -812,6 +839,7 @@ function updateModelContextInfo() {
     const selectedOption = modelSelect.options[modelSelect.selectedIndex];
     const modelContext = parseInt(selectedOption?.dataset?.context) || 0;
     const modelContextDisplay = document.getElementById('modelContextDisplay');
+    const sliderMaxLabel = document.getElementById('sliderMaxLabel');
 
     if (modelContext > 0) {
         modelContextDisplay.textContent = modelContext.toLocaleString() + ' tokens';
@@ -823,11 +851,17 @@ function updateModelContextInfo() {
     const slider = document.getElementById('formatContextSlider');
     if (modelContext > 0) {
         slider.max = modelContext;
+        // Update the max label to show the actual max
+        sliderMaxLabel.textContent = formatTokenCount(modelContext);
         // If current value exceeds model max, adjust it
         if (parseInt(slider.value) > modelContext) {
             slider.value = modelContext;
             updateContextSliderDisplay();
         }
+    } else {
+        // Default to 128K if no model context info
+        slider.max = 131072;
+        sliderMaxLabel.textContent = '128K';
     }
 
     updateContextUsageBar();
