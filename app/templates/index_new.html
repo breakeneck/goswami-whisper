@@ -62,17 +62,6 @@
         border-radius: 0.2rem;
     }
     /* Diff highlighting styles */
-    .diff-panel {
-        font-family: monospace;
-        font-size: 0.85rem;
-        white-space: pre-wrap;
-        word-wrap: break-word;
-        background: #f8f9fa;
-        padding: 1rem;
-        border-radius: 0.5rem;
-        border: 1px solid #dee2e6;
-        line-height: 1.6;
-    }
     .diff-added {
         background-color: #d4edda;
         color: #155724;
@@ -80,29 +69,48 @@
     .diff-removed {
         background-color: #f8d7da;
         color: #721c24;
-        text-decoration: line-through;
-    }
-    .diff-line {
-        display: block;
-        padding: 2px 4px;
-        margin: 1px 0;
-    }
-    .diff-line.diff-unchanged {
-        color: #666;
-    }
-    .diff-line.diff-context {
-        color: #999;
-        font-style: italic;
     }
     .compare-btn {
         cursor: pointer;
         transition: all 0.2s;
     }
-    .compare-btn.selected-left {
+    .compare-btn.selected {
         box-shadow: 0 0 0 3px rgba(13, 110, 253, 0.5);
     }
-    .compare-btn.selected-right {
-        box-shadow: 0 0 0 3px rgba(25, 135, 84, 0.5);
+    .compare-panel {
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        border: 1px solid #dee2e6;
+        border-radius: 0.5rem;
+        overflow: hidden;
+    }
+    .compare-panel-header {
+        background: #f8f9fa;
+        padding: 0.5rem 1rem;
+        border-bottom: 1px solid #dee2e6;
+        font-weight: bold;
+        font-size: 0.85rem;
+        flex-shrink: 0;
+    }
+    .compare-panel-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1rem;
+        font-family: monospace;
+        font-size: 0.85rem;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        line-height: 1.6;
+        background: #fff;
+    }
+    .compare-panel-content .diff-added {
+        background-color: #d4edda;
+        color: #155724;
+    }
+    .compare-panel-content .diff-removed {
+        background-color: #f8d7da;
+        color: #721c24;
     }
 </style>
 {% endblock %}
@@ -362,22 +370,15 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-3" style="overflow-y: auto;">
-                <div id="diffHeader" class="mb-3 d-none">
-                    <div class="d-flex gap-3 mb-2">
-                        <span class="badge bg-primary" id="diffLeftLabel">Left</span>
-                        <span>vs</span>
-                        <span class="badge bg-success" id="diffRightLabel">Right</span>
-                    </div>
-                    <div class="small text-muted mb-2">
-                        <span class="diff-removed px-1">Removed</span>
-                        <span class="diff-added px-1 ms-2">Added</span>
-                    </div>
-                </div>
                 <div id="diffContainer">
                     <div class="text-center text-muted py-5" id="diffPlaceholder">
-                        Select two items to compare using the buttons above
+                        Select items to compare using the buttons above (2-4 items)
                     </div>
-                    <div class="diff-panel d-none" id="diffUnified" style="overflow-y: auto; max-height: 80vh;"></div>
+                    <div class="d-none" id="sideBySideContainer">
+                        <div class="row g-2" id="sideBySidePanels" style="height: calc(100vh - 150px);">
+                            <!-- Panels will be dynamically inserted here -->
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1208,16 +1209,14 @@ let compareState = {
     type: null,  // 'transcribe' or 'content'
     parentId: null,
     items: [],
-    selectedLeft: null,
-    selectedRight: null
+    selectedIndices: []  // Array of selected indices (2-4 items)
 };
 
 async function openCompareModal(type, parentId) {
     compareState.type = type;
     compareState.parentId = parentId;
     compareState.items = [];
-    compareState.selectedLeft = null;
-    compareState.selectedRight = null;
+    compareState.selectedIndices = [];
 
     // Get items to compare
     if (type === 'transcribe') {
@@ -1259,161 +1258,178 @@ function renderCompareButtons() {
     let html = '';
 
     compareState.items.forEach((item, index) => {
-        const isLeft = compareState.selectedLeft === index;
-        const isRight = compareState.selectedRight === index;
-        let btnClass = 'btn-outline-secondary';
-        let selectedClass = '';
-
-        if (isLeft) {
-            btnClass = 'btn-primary';
-            selectedClass = 'selected-left';
-        } else if (isRight) {
-            btnClass = 'btn-success';
-            selectedClass = 'selected-right';
-        }
+        const isSelected = compareState.selectedIndices.includes(index);
+        const selectionOrder = compareState.selectedIndices.indexOf(index) + 1;
+        let btnClass = isSelected ? 'btn-primary' : 'btn-outline-secondary';
+        let selectedClass = isSelected ? 'selected' : '';
 
         html += `
             <button class="btn btn-sm ${btnClass} compare-btn ${selectedClass}" onclick="selectCompareItem(${index})">
+                ${isSelected ? `<span class="badge bg-light text-dark me-1">${selectionOrder}</span>` : ''}
                 ${item.isRawTranscribe ? 'Transcribe' : escapeHtml(item.provider) + '/' + escapeHtml(item.model)}
             </button>
         `;
     });
 
+    // Add clear button if items are selected
+    if (compareState.selectedIndices.length > 0) {
+        html += `
+            <button class="btn btn-sm btn-outline-danger ms-2" onclick="clearCompareSelection()">
+                <i class="bi bi-x-circle"></i> Clear
+            </button>
+        `;
+    }
+
     container.innerHTML = html;
 }
 
 function selectCompareItem(index) {
-    if (compareState.selectedLeft === null) {
-        compareState.selectedLeft = index;
-    } else if (compareState.selectedRight === null && index !== compareState.selectedLeft) {
-        compareState.selectedRight = index;
-        showDiff();
-    } else if (index === compareState.selectedLeft) {
-        // Clicking same item - deselect it
-        compareState.selectedLeft = compareState.selectedRight;
-        compareState.selectedRight = null;
-        resetDiffView();
-    } else if (index === compareState.selectedRight) {
-        // Clicking right item - deselect it
-        compareState.selectedRight = null;
-        resetDiffView();
-    } else {
-        // Replace right selection
-        compareState.selectedRight = index;
-        showDiff();
+    const existingIndex = compareState.selectedIndices.indexOf(index);
+
+    if (existingIndex !== -1) {
+        // Already selected - deselect it
+        compareState.selectedIndices.splice(existingIndex, 1);
+    } else if (compareState.selectedIndices.length < 4) {
+        // Add to selection (max 4)
+        compareState.selectedIndices.push(index);
     }
 
     renderCompareButtons();
+
+    // Show side-by-side view if 2+ items selected
+    if (compareState.selectedIndices.length >= 2) {
+        showSideBySide();
+    } else {
+        resetDiffView();
+    }
+}
+
+function clearCompareSelection() {
+    compareState.selectedIndices = [];
+    renderCompareButtons();
+    resetDiffView();
 }
 
 function resetDiffView() {
     document.getElementById('diffPlaceholder').classList.remove('d-none');
-    document.getElementById('diffUnified').classList.add('d-none');
-    document.getElementById('diffHeader').classList.add('d-none');
+    document.getElementById('sideBySideContainer').classList.add('d-none');
 }
 
-async function showDiff() {
-    const leftItem = compareState.items[compareState.selectedLeft];
-    const rightItem = compareState.items[compareState.selectedRight];
+async function showSideBySide() {
+    const selectedItems = compareState.selectedIndices.map(idx => compareState.items[idx]);
+    const numPanels = selectedItems.length;
 
-    // Fetch texts if not already loaded
-    let leftText = leftItem.text;
-    let rightText = rightItem.text;
+    // Determine column class based on number of panels
+    let colClass;
+    if (numPanels === 2) colClass = 'col-6';
+    else if (numPanels === 3) colClass = 'col-4';
+    else colClass = 'col-3';
 
-    if (!leftText || !rightText) {
-        try {
-            if (!leftText) {
-                const endpoint = leftItem.isRawTranscribe ? '/api/transcribe' : (compareState.type === 'transcribe' ? '/api/transcribe' : '/api/format');
-                const resp = await fetch(`${endpoint}/${leftItem.id}/status`);
+    // Fetch texts for all selected items
+    const texts = [];
+    for (const item of selectedItems) {
+        let text = item.text;
+        if (!text) {
+            try {
+                const endpoint = item.isRawTranscribe ? '/api/transcribe' : (compareState.type === 'transcribe' ? '/api/transcribe' : '/api/format');
+                const resp = await fetch(`${endpoint}/${item.id}/status`);
                 const data = await resp.json();
-                leftText = data.text;
+                text = data.text || '';
+            } catch (error) {
+                text = 'Error loading text';
             }
-
-            if (!rightText) {
-                const endpoint = rightItem.isRawTranscribe ? '/api/transcribe' : (compareState.type === 'transcribe' ? '/api/transcribe' : '/api/format');
-                const resp = await fetch(`${endpoint}/${rightItem.id}/status`);
-                const data = await resp.json();
-                rightText = data.text;
-            }
-        } catch (error) {
-            alert('Error loading text: ' + error.message);
-            return;
         }
+        texts.push(text);
     }
 
-    // Update labels
-    const leftLabel = leftItem.isRawTranscribe ? 'Transcribe' : `${leftItem.provider}/${leftItem.model}`;
-    const rightLabel = rightItem.isRawTranscribe ? 'Transcribe' : `${rightItem.provider}/${rightItem.model}`;
-    document.getElementById('diffLeftLabel').textContent = leftLabel;
-    document.getElementById('diffRightLabel').textContent = rightLabel;
+    // Use first selected as base for highlighting differences
+    const baseText = texts[0];
 
-    // Compute unified diff showing only differences
-    const diffHtml = computeUnifiedDiff(leftText, rightText);
+    // Build panels HTML
+    let panelsHtml = '';
+    for (let i = 0; i < numPanels; i++) {
+        const item = selectedItems[i];
+        const text = texts[i];
+        const label = item.isRawTranscribe ? 'Transcribe' : `${item.provider}/${item.model}`;
 
-    document.getElementById('diffUnified').innerHTML = diffHtml;
+        // Highlight differences compared to first panel
+        let contentHtml;
+        if (i === 0) {
+            contentHtml = escapeHtml(text);
+        } else {
+            contentHtml = computeSideBySideDiff(baseText, text);
+        }
 
+        panelsHtml += `
+            <div class="${colClass}">
+                <div class="compare-panel">
+                    <div class="compare-panel-header">
+                        <span class="badge bg-primary me-2">${i + 1}</span>
+                        ${escapeHtml(label)}
+                    </div>
+                    <div class="compare-panel-content">${contentHtml}</div>
+                </div>
+            </div>
+        `;
+    }
+
+    document.getElementById('sideBySidePanels').innerHTML = panelsHtml;
     document.getElementById('diffPlaceholder').classList.add('d-none');
-    document.getElementById('diffUnified').classList.remove('d-none');
-    document.getElementById('diffHeader').classList.remove('d-none');
+    document.getElementById('sideBySideContainer').classList.remove('d-none');
+
+    // Sync scroll across panels
+    setupSyncScroll();
 }
 
-function computeUnifiedDiff(leftText, rightText) {
-    // Word-level diff for better granularity
-    const leftWords = leftText.split(/(\s+)/);
-    const rightWords = rightText.split(/(\s+)/);
+function setupSyncScroll() {
+    const panels = document.querySelectorAll('.compare-panel-content');
+    let isScrolling = false;
 
-    // Use LCS on words
-    const lcs = longestCommonSubsequence(leftWords, rightWords);
+    panels.forEach(panel => {
+        panel.addEventListener('scroll', function() {
+            if (isScrolling) return;
+            isScrolling = true;
+
+            const scrollTop = this.scrollTop;
+            const scrollHeight = this.scrollHeight - this.clientHeight;
+            const scrollRatio = scrollHeight > 0 ? scrollTop / scrollHeight : 0;
+
+            panels.forEach(otherPanel => {
+                if (otherPanel !== this) {
+                    const otherScrollHeight = otherPanel.scrollHeight - otherPanel.clientHeight;
+                    otherPanel.scrollTop = scrollRatio * otherScrollHeight;
+                }
+            });
+
+            setTimeout(() => { isScrolling = false; }, 50);
+        });
+    });
+}
+
+function computeSideBySideDiff(baseText, compareText) {
+    // Word-level diff highlighting differences from base
+    const baseWords = baseText.split(/(\s+)/);
+    const compareWords = compareText.split(/(\s+)/);
+    const lcs = longestCommonSubsequence(baseWords, compareWords);
 
     let html = '';
-    let li = 0, ri = 0, lcsIdx = 0;
-    let hasDiff = false;
+    let ci = 0, lcsIdx = 0;
 
-    while (li < leftWords.length || ri < rightWords.length) {
-        if (lcsIdx < lcs.length && li < leftWords.length && leftWords[li] === lcs[lcsIdx] &&
-            ri < rightWords.length && rightWords[ri] === lcs[lcsIdx]) {
-            // Same word in both - show unchanged
-            html += escapeHtml(leftWords[li]);
-            li++; ri++; lcsIdx++;
-        } else if (lcsIdx < lcs.length && li < leftWords.length && leftWords[li] !== lcs[lcsIdx]) {
-            // Word removed from left
-            if (leftWords[li].trim()) {
-                html += `<span class="diff-removed">${escapeHtml(leftWords[li])}</span>`;
-                hasDiff = true;
+    while (ci < compareWords.length) {
+        if (lcsIdx < lcs.length && compareWords[ci] === lcs[lcsIdx]) {
+            // Same as base
+            html += escapeHtml(compareWords[ci]);
+            ci++;
+            lcsIdx++;
+        } else {
+            // Different from base - highlight as added
+            if (compareWords[ci].trim()) {
+                html += `<span class="diff-added">${escapeHtml(compareWords[ci])}</span>`;
             } else {
-                html += escapeHtml(leftWords[li]);
+                html += escapeHtml(compareWords[ci]);
             }
-            li++;
-        } else if (lcsIdx < lcs.length && ri < rightWords.length && rightWords[ri] !== lcs[lcsIdx]) {
-            // Word added in right
-            if (rightWords[ri].trim()) {
-                html += `<span class="diff-added">${escapeHtml(rightWords[ri])}</span>`;
-                hasDiff = true;
-            } else {
-                html += escapeHtml(rightWords[ri]);
-            }
-            ri++;
-        } else if (li < leftWords.length) {
-            if (leftWords[li].trim()) {
-                html += `<span class="diff-removed">${escapeHtml(leftWords[li])}</span>`;
-                hasDiff = true;
-            } else {
-                html += escapeHtml(leftWords[li]);
-            }
-            li++;
-        } else if (ri < rightWords.length) {
-            if (rightWords[ri].trim()) {
-                html += `<span class="diff-added">${escapeHtml(rightWords[ri])}</span>`;
-                hasDiff = true;
-            } else {
-                html += escapeHtml(rightWords[ri]);
-            }
-            ri++;
+            ci++;
         }
-    }
-
-    if (!hasDiff) {
-        return '<div class="text-center text-success py-4"><i class="bi bi-check-circle-fill me-2"></i>No differences found - texts are identical</div>';
     }
 
     return html;
