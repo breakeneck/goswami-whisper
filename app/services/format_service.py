@@ -448,16 +448,25 @@ Transcription:
 
     @staticmethod
     def infer_context_length_from_model_name(model_id: str) -> int:
-        """Infer context length from model name based on known patterns."""
+        """Infer context length from model name based on known patterns.
+
+        Note: These are conservative defaults for local/quantized models.
+        The actual context window may differ - prefer API-reported values when available.
+        """
         model_lower = model_id.lower()
 
-        # Qwen models - 128K to 1M context
+        # Qwen models - use conservative defaults for local models
+        # While base Qwen 2.5 can support up to 1M, local/quantized versions often have smaller context
         if 'qwen' in model_lower:
-            if '2.5' in model_lower or 'qwen2.5' in model_lower:
-                return 1048576  # 1M context
-            if '2' in model_lower or 'qwen2' in model_lower:
-                return 131072  # 128K context
-            return 32768  # 32K for older Qwen
+            # Check for explicit context size in model name (e.g., qwen2.5-7b-instruct-128k)
+            if '1m' in model_lower or '1000k' in model_lower:
+                return 1048576
+            if '128k' in model_lower:
+                return 131072
+            if '64k' in model_lower:
+                return 65536
+            # Default to 32K for local Qwen models - this is safe for most quantized versions
+            return 32768
 
         # Llama models
         if 'llama' in model_lower:
