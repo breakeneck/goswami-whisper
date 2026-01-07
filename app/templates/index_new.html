@@ -288,16 +288,28 @@
                 </div>
                 <div class="mb-3" id="contextWindowGroup" style="display: none;">
                     <label class="form-label fw-bold">Context Window Size</label>
-                    <select class="form-select" id="formatContextWindow">
-                        <option value="2048">2K (2,048 tokens)</option>
-                        <option value="4096">4K (4,096 tokens)</option>
-                        <option value="8192">8K (8,192 tokens)</option>
-                        <option value="16384">16K (16,384 tokens)</option>
-                        <option value="32768">32K (32,768 tokens)</option>
-                        <option value="65536">64K (65,536 tokens)</option>
-                        <option value="131072">128K (131,072 tokens)</option>
-                    </select>
-                    <small class="text-muted">Select the context window size for LM Studio model</small>
+                    <div class="d-flex align-items-center gap-3">
+                        <input type="range" class="form-range flex-grow-1" id="formatContextSlider"
+                               min="2048" max="131072" step="2048" value="8192">
+                        <span class="badge bg-primary" id="contextWindowDisplay" style="min-width: 80px;">8K</span>
+                    </div>
+                    <div class="d-flex justify-content-between mt-1">
+                        <small class="text-muted">2K</small>
+                        <small class="text-muted">128K</small>
+                    </div>
+                    <div class="mt-2 p-2 bg-light rounded" id="tokenInfoPanel">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <span class="small">Model context:</span>
+                            <span class="small fw-bold" id="modelContextDisplay">-</span>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center mt-1">
+                            <span class="small">Selected:</span>
+                            <span class="small fw-bold" id="selectedContextDisplay">8,192 tokens</span>
+                        </div>
+                        <div class="progress mt-2" style="height: 6px;">
+                            <div class="progress-bar" id="contextUsageBar" style="width: 50%;"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -713,6 +725,9 @@ function setupEventListeners() {
     document.getElementById('formatProvider').addEventListener('change', updateFormatModels);
     document.getElementById('formatSubmitBtn').addEventListener('click', handleFormat);
 
+    // Context window slider
+    document.getElementById('formatContextSlider').addEventListener('input', updateContextSliderDisplay);
+
     // Refresh button
     document.getElementById('refreshBtn').addEventListener('click', loadUploads);
 
@@ -742,15 +757,17 @@ function updateFormatModels() {
     const provider = document.getElementById('formatProvider').value;
     const modelSelect = document.getElementById('formatModel');
     const contextWindowGroup = document.getElementById('contextWindowGroup');
-    const contextWindowSelect = document.getElementById('formatContextWindow');
     const models = providersConfig.format?.[provider]?.models || [];
+    const modelsInfo = providersConfig.format?.[provider]?.models_info || [];
 
     if (models.length === 0 && provider === 'lmstudio') {
         modelSelect.innerHTML = '<option value="">No models available - Start LM Studio</option>';
     } else {
-        modelSelect.innerHTML = models.map(m =>
-            `<option value="${m}">${m}</option>`
-        ).join('');
+        modelSelect.innerHTML = models.map(m => {
+            const info = modelsInfo.find(i => i.id === m);
+            const contextStr = info ? ` (${formatTokenCount(info.context_length)})` : '';
+            return `<option value="${m}" data-context="${info?.context_length || 0}">${m}${contextStr}</option>`;
+        }).join('');
     }
 
     // Show/hide context window selector for LM Studio
@@ -758,11 +775,80 @@ function updateFormatModels() {
         contextWindowGroup.style.display = 'block';
         // Restore last selected context window size
         const savedContextWindow = localStorage.getItem('lmstudio_context_window');
+        const slider = document.getElementById('formatContextSlider');
         if (savedContextWindow) {
-            contextWindowSelect.value = savedContextWindow;
+            slider.value = savedContextWindow;
         }
+        updateContextSliderDisplay();
+        updateModelContextInfo();
+
+        // Add change listener for model select
+        modelSelect.onchange = updateModelContextInfo;
     } else {
         contextWindowGroup.style.display = 'none';
+    }
+}
+
+function formatTokenCount(tokens) {
+    if (tokens >= 1000000) return (tokens / 1000000).toFixed(1) + 'M';
+    if (tokens >= 1000) return Math.round(tokens / 1000) + 'K';
+    return tokens.toString();
+}
+
+function updateContextSliderDisplay() {
+    const slider = document.getElementById('formatContextSlider');
+    const display = document.getElementById('contextWindowDisplay');
+    const selectedDisplay = document.getElementById('selectedContextDisplay');
+    const value = parseInt(slider.value);
+
+    display.textContent = formatTokenCount(value);
+    selectedDisplay.textContent = value.toLocaleString() + ' tokens';
+
+    updateContextUsageBar();
+}
+
+function updateModelContextInfo() {
+    const modelSelect = document.getElementById('formatModel');
+    const selectedOption = modelSelect.options[modelSelect.selectedIndex];
+    const modelContext = parseInt(selectedOption?.dataset?.context) || 0;
+    const modelContextDisplay = document.getElementById('modelContextDisplay');
+
+    if (modelContext > 0) {
+        modelContextDisplay.textContent = modelContext.toLocaleString() + ' tokens';
+    } else {
+        modelContextDisplay.textContent = 'Unknown';
+    }
+
+    // Update slider max based on model context
+    const slider = document.getElementById('formatContextSlider');
+    if (modelContext > 0) {
+        slider.max = modelContext;
+        // If current value exceeds model max, adjust it
+        if (parseInt(slider.value) > modelContext) {
+            slider.value = modelContext;
+            updateContextSliderDisplay();
+        }
+    }
+
+    updateContextUsageBar();
+}
+
+function updateContextUsageBar() {
+    const slider = document.getElementById('formatContextSlider');
+    const modelSelect = document.getElementById('formatModel');
+    const selectedOption = modelSelect.options[modelSelect.selectedIndex];
+    const modelContext = parseInt(selectedOption?.dataset?.context) || parseInt(slider.max);
+    const selectedContext = parseInt(slider.value);
+
+    const usageBar = document.getElementById('contextUsageBar');
+    const percentage = modelContext > 0 ? (selectedContext / modelContext) * 100 : 50;
+    usageBar.style.width = percentage + '%';
+
+    // Color based on usage
+    if (percentage > 80) {
+        usageBar.className = 'progress-bar bg-warning';
+    } else {
+        usageBar.className = 'progress-bar bg-primary';
     }
 }
 
@@ -909,9 +995,29 @@ async function handleFormat() {
 
     // Add context window for LM Studio and save to localStorage
     if (provider === 'lmstudio') {
-        const contextWindow = document.getElementById('formatContextWindow').value;
+        const contextWindow = document.getElementById('formatContextSlider').value;
         requestBody.context_length = parseInt(contextWindow);
         localStorage.setItem('lmstudio_context_window', contextWindow);
+
+        // Unload all models and load the selected one with context
+        try {
+            showProgress('Loading Model...', 'Unloading previous models...');
+            await fetch('/api/lmstudio/unload', { method: 'POST' });
+
+            document.getElementById('progressStatus').textContent = 'Loading model with ' + formatTokenCount(parseInt(contextWindow)) + ' context...';
+            await fetch('/api/lmstudio/load', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    model_id: model,
+                    context_length: parseInt(contextWindow)
+                })
+            });
+            hideProgress();
+        } catch (e) {
+            console.warn('Could not reload model:', e);
+            hideProgress();
+        }
     }
 
     try {

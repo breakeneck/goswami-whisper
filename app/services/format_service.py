@@ -252,3 +252,85 @@ Transcription:
         except Exception:
             return []
 
+    @staticmethod
+    def get_lmstudio_models_with_info():
+        """Get available models from LM Studio with additional info."""
+        try:
+            base_url = current_app.config.get('LMSTUDIO_BASE_URL', 'http://localhost:1234/v1')
+            # Use the models endpoint to get loaded models
+            response = requests.get(f"{base_url}/models")
+            if response.status_code == 200:
+                data = response.json()
+                models_info = []
+                for model in data.get('data', []):
+                    model_info = {
+                        'id': model.get('id'),
+                        'context_length': model.get('context_length', 4096),
+                        'loaded': True
+                    }
+                    models_info.append(model_info)
+                return models_info
+            return []
+        except Exception:
+            return []
+
+    @staticmethod
+    def unload_lmstudio_models():
+        """Unload all loaded models from LM Studio."""
+        try:
+            base_url = current_app.config.get('LMSTUDIO_BASE_URL', 'http://localhost:1234/v1')
+            # LM Studio uses POST /v1/models/unload to unload models
+            # First get all loaded models
+            response = requests.get(f"{base_url}/models")
+            if response.status_code == 200:
+                data = response.json()
+                for model in data.get('data', []):
+                    model_id = model.get('id')
+                    if model_id:
+                        # Try to unload using the lms endpoint
+                        try:
+                            requests.post(
+                                f"{base_url.replace('/v1', '')}/api/v0/models/unload",
+                                json={"model": model_id},
+                                timeout=10
+                            )
+                        except:
+                            pass
+            return True
+        except Exception as e:
+            print(f"Error unloading models: {e}")
+            return False
+
+    @staticmethod
+    def load_lmstudio_model(model_id: str, context_length: int = None):
+        """Load a specific model in LM Studio."""
+        try:
+            base_url = current_app.config.get('LMSTUDIO_BASE_URL', 'http://localhost:1234/v1')
+            payload = {"model": model_id}
+            if context_length:
+                payload["context_length"] = context_length
+
+            # Try the lms API endpoint for loading
+            response = requests.post(
+                f"{base_url.replace('/v1', '')}/api/v0/models/load",
+                json=payload,
+                timeout=120  # Loading can take time
+            )
+            return response.status_code == 200
+        except Exception as e:
+            print(f"Error loading model: {e}")
+            return False
+
+    @staticmethod
+    def get_lmstudio_available_models():
+        """Get list of all available (downloadable) models from LM Studio."""
+        try:
+            base_url = current_app.config.get('LMSTUDIO_BASE_URL', 'http://localhost:1234/v1')
+            response = requests.get(f"{base_url.replace('/v1', '')}/api/v0/models")
+            if response.status_code == 200:
+                data = response.json()
+                return data.get('data', [])
+            return []
+        except Exception:
+            return []
+

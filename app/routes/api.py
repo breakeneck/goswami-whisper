@@ -452,15 +452,64 @@ def get_providers():
         'format': current_app.config.get('FORMAT_PROVIDERS', {})
     }
 
-    # Try to get LM Studio models dynamically
+    # Try to get LM Studio models with info dynamically
     try:
-        lmstudio_models = FormatService.get_lmstudio_models()
-        if lmstudio_models:
-            config['format']['lmstudio']['models'] = lmstudio_models
+        lmstudio_models_info = FormatService.get_lmstudio_models_with_info()
+        if lmstudio_models_info:
+            config['format']['lmstudio']['models'] = [m['id'] for m in lmstudio_models_info]
+            config['format']['lmstudio']['models_info'] = lmstudio_models_info
+        else:
+            # Fallback to simple list
+            lmstudio_models = FormatService.get_lmstudio_models()
+            if lmstudio_models:
+                config['format']['lmstudio']['models'] = lmstudio_models
     except Exception:
         pass
 
     return jsonify(config)
+
+
+# ============ LM Studio Endpoints ============
+
+@api_bp.route('/lmstudio/models', methods=['GET'])
+def get_lmstudio_models():
+    """Get loaded LM Studio models with info."""
+    try:
+        models_info = FormatService.get_lmstudio_models_with_info()
+        return jsonify({'models': models_info})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/lmstudio/unload', methods=['POST'])
+def unload_lmstudio_models():
+    """Unload all loaded LM Studio models."""
+    try:
+        success = FormatService.unload_lmstudio_models()
+        return jsonify({'success': success})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/lmstudio/load', methods=['POST'])
+def load_lmstudio_model():
+    """Load a specific LM Studio model with optional context length."""
+    try:
+        data = request.get_json()
+        model_id = data.get('model_id')
+        context_length = data.get('context_length')
+
+        if not model_id:
+            return jsonify({'error': 'model_id is required'}), 400
+
+        # Unload existing models first
+        FormatService.unload_lmstudio_models()
+
+        # Load the new model
+        success = FormatService.load_lmstudio_model(model_id, context_length)
+        return jsonify({'success': success})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ============ Search Endpoints ============
