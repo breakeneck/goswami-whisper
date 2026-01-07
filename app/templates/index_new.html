@@ -278,6 +278,19 @@
                         <!-- Models will be populated dynamically -->
                     </select>
                 </div>
+                <div class="mb-3" id="contextWindowGroup" style="display: none;">
+                    <label class="form-label fw-bold">Context Window Size</label>
+                    <select class="form-select" id="formatContextWindow">
+                        <option value="2048">2K (2,048 tokens)</option>
+                        <option value="4096">4K (4,096 tokens)</option>
+                        <option value="8192">8K (8,192 tokens)</option>
+                        <option value="16384">16K (16,384 tokens)</option>
+                        <option value="32768">32K (32,768 tokens)</option>
+                        <option value="65536">64K (65,536 tokens)</option>
+                        <option value="131072">128K (131,072 tokens)</option>
+                    </select>
+                    <small class="text-muted">Select the context window size for LM Studio model</small>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -727,6 +740,8 @@ function updateTranscribeModels() {
 function updateFormatModels() {
     const provider = document.getElementById('formatProvider').value;
     const modelSelect = document.getElementById('formatModel');
+    const contextWindowGroup = document.getElementById('contextWindowGroup');
+    const contextWindowSelect = document.getElementById('formatContextWindow');
     const models = providersConfig.format?.[provider]?.models || [];
 
     if (models.length === 0 && provider === 'lmstudio') {
@@ -735,6 +750,18 @@ function updateFormatModels() {
         modelSelect.innerHTML = models.map(m =>
             `<option value="${m}">${m}</option>`
         ).join('');
+    }
+
+    // Show/hide context window selector for LM Studio
+    if (provider === 'lmstudio') {
+        contextWindowGroup.style.display = 'block';
+        // Restore last selected context window size
+        const savedContextWindow = localStorage.getItem('lmstudio_context_window');
+        if (savedContextWindow) {
+            contextWindowSelect.value = savedContextWindow;
+        }
+    } else {
+        contextWindowGroup.style.display = 'none';
     }
 }
 
@@ -876,11 +903,21 @@ async function handleFormat() {
     const provider = document.getElementById('formatProvider').value;
     const model = document.getElementById('formatModel').value;
 
+    // Build request body
+    const requestBody = {transcribe_id: parseInt(transcribeId), provider, model};
+
+    // Add context window for LM Studio and save to localStorage
+    if (provider === 'lmstudio') {
+        const contextWindow = document.getElementById('formatContextWindow').value;
+        requestBody.context_length = parseInt(contextWindow);
+        localStorage.setItem('lmstudio_context_window', contextWindow);
+    }
+
     try {
         const response = await fetch('/api/format', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({transcribe_id: parseInt(transcribeId), provider, model})
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {

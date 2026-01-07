@@ -237,6 +237,7 @@ def start_formatting():
     transcribe_id = data.get('transcribe_id')
     provider = data.get('provider', 'anthropic')
     model = data.get('model', 'claude-sonnet-4-20250514')
+    context_length = data.get('context_length')  # Optional, for LM Studio
 
     transcribe = Transcribe.query.get_or_404(transcribe_id)
 
@@ -257,7 +258,7 @@ def start_formatting():
     app = current_app._get_current_object()
     thread = threading.Thread(
         target=process_formatting_async,
-        args=(app, content.id, transcribe.text, provider, model)
+        args=(app, content.id, transcribe.text, provider, model, context_length)
     )
     thread.daemon = True
     thread.start()
@@ -265,7 +266,7 @@ def start_formatting():
     return jsonify(content.to_dict()), 201
 
 
-def process_formatting_async(app, content_id, raw_text, provider, model):
+def process_formatting_async(app, content_id, raw_text, provider, model, context_length=None):
     """Process formatting in background thread."""
     with app.app_context():
         content = Content.query.get(content_id)
@@ -277,7 +278,7 @@ def process_formatting_async(app, content_id, raw_text, provider, model):
             db.session.commit()
 
             start_time = time.time()
-            formatted_text = FormatService.format_text(raw_text, provider, model)
+            formatted_text = FormatService.format_text(raw_text, provider, model, context_length=context_length)
             duration = time.time() - start_time
 
             content.text = formatted_text

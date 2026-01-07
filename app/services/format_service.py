@@ -40,7 +40,7 @@ Transcription:
         )
 
     @staticmethod
-    def format_text(raw_text: str, provider: str, model: str, stream_callback=None) -> str:
+    def format_text(raw_text: str, provider: str, model: str, stream_callback=None, context_length=None) -> str:
         """
         Format raw transcription text using the specified provider and model.
 
@@ -49,6 +49,7 @@ Transcription:
             provider: Provider name (openai, anthropic, gemini, lmstudio)
             model: Model name
             stream_callback: Optional callback for streaming responses
+            context_length: Optional context window size (for LM Studio)
 
         Returns:
             Formatted text
@@ -63,7 +64,7 @@ Transcription:
         elif provider == 'gemini':
             return FormatService._format_with_gemini(raw_text, model, stream_callback)
         elif provider == 'lmstudio':
-            return FormatService._format_with_lmstudio(raw_text, model, stream_callback)
+            return FormatService._format_with_lmstudio(raw_text, model, stream_callback, context_length)
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
@@ -202,9 +203,14 @@ Transcription:
             return data['candidates'][0]['content']['parts'][0]['text']
 
     @staticmethod
-    def _format_with_lmstudio(raw_text: str, model: str, stream_callback=None) -> str:
+    def _format_with_lmstudio(raw_text: str, model: str, stream_callback=None, context_length=None) -> str:
         """Format text using LM Studio (OpenAI-compatible API)."""
         client = FormatService.get_lmstudio_client()
+
+        # Build extra params for context length if specified
+        extra_body = {}
+        if context_length:
+            extra_body['num_ctx'] = context_length
 
         if stream_callback:
             response = client.chat.completions.create(
@@ -214,7 +220,8 @@ Transcription:
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
                 temperature=0.3,
-                stream=True
+                stream=True,
+                extra_body=extra_body if extra_body else None
             )
             result = ""
             for chunk in response:
@@ -230,7 +237,8 @@ Transcription:
                     {"role": "system", "content": FormatService.SYSTEM_PROMPT},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                temperature=0.3
+                temperature=0.3,
+                extra_body=extra_body if extra_body else None
             )
             return response.choices[0].message.content
 
