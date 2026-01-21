@@ -246,7 +246,7 @@ class WhisperService:
             tqdm.tqdm = progress_tracker
             print(f"[DEBUG] Patched tqdm.tqdm")
 
-            result = model.transcribe(file_path, verbose=False)
+            result = model.transcribe(file_path, verbose=False, language="ru", task="transcribe")
         except Exception as e:
             print(f"Transcription error: {e}")
             raise

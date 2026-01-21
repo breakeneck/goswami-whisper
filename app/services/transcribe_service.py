@@ -170,7 +170,7 @@ class TranscribeService:
 
         print(f"Starting Faster Whisper transcription for: {file_path}")
 
-        segments, info = model.transcribe(file_path, beam_size=5)
+        segments, info = model.transcribe(file_path, beam_size=5, language="ru", task="transcribe")
 
         # Collect all segments with progress tracking
         text_parts = []
