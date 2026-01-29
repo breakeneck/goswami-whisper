@@ -37,6 +37,12 @@ class Config:
     # Google Gemini
     GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
 
+    # xAI (Grok)
+    XAI_API_KEY = os.environ.get('XAI_API_KEY', '')
+
+    # Zhipu AI (智谱AI/BigModel)
+    ZHIPU_API_KEY = os.environ.get('ZHIPU_API_KEY', '')
+
     # LM Studio
     LMSTUDIO_BASE_URL = os.environ.get('LMSTUDIO_BASE_URL', 'http://localhost:1234/v1')
 
@@ -65,6 +71,14 @@ class Config:
         'gemini': {
             'name': 'Google Gemini',
             'models': ['gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash']
+        },
+        'xai': {
+            'name': 'xAI (Grok)',
+            'models': ['grok-3', 'grok-3-fast', 'grok-3-mini', 'grok-3-mini-fast', 'grok-2-1212', 'grok-2-vision-1212', 'grok-vision-beta', 'grok-beta']
+        },
+        'zhipu': {
+            'name': 'Zhipu AI (智谱)',
+            'models': ['glm-4.7', 'glm-4.7-flash', 'glm-4.7-flashx', 'glm-4.6', 'glm-4.6v-flashx', 'glm-4.5-air', 'glm-4-plus', 'glm-4-long', 'glm-4-air', 'glm-4-airx', 'glm-4-flash', 'glm-4-flashx', 'glm-z1-air', 'glm-z1-airx', 'glm-z1-flash']
         },
         'lmstudio': {
             'name': 'LM Studio (Local)',

@@ -43,6 +43,22 @@ Transcription:
         )
 
     @staticmethod
+    def get_xai_client() -> OpenAI:
+        """Get xAI (Grok) client (OpenAI-compatible API)."""
+        return OpenAI(
+            base_url='https://api.x.ai/v1',
+            api_key=current_app.config.get('XAI_API_KEY')
+        )
+
+    @staticmethod
+    def get_zhipu_client() -> OpenAI:
+        """Get Zhipu AI (智谱AI/BigModel) client (OpenAI-compatible API)."""
+        return OpenAI(
+            base_url='https://open.bigmodel.cn/api/paas/v4',
+            api_key=current_app.config.get('ZHIPU_API_KEY')
+        )
+
+    @staticmethod
     def get_model_context_length(provider: str, model: str) -> int:
         """
         Fetch the real context length for a model from its API.
@@ -67,6 +83,10 @@ Transcription:
                 context_length = FormatService._get_anthropic_context_length(model)
             elif provider == 'gemini':
                 context_length = FormatService._get_gemini_context_length(model)
+            elif provider == 'xai':
+                context_length = FormatService._get_xai_context_length(model)
+            elif provider == 'zhipu':
+                context_length = FormatService._get_zhipu_context_length(model)
             elif provider == 'lmstudio':
                 context_length = FormatService._get_lmstudio_context_length(model)
         except Exception as e:
@@ -167,6 +187,60 @@ Transcription:
         return 32768  # Safe default
 
     @staticmethod
+    def _get_xai_context_length(model: str) -> int:
+        """Get context length for xAI (Grok) models."""
+        model_lower = model.lower()
+        # Grok-3 models have 131072 context
+        if 'grok-3' in model_lower:
+            return 131072
+        # Grok-2 models have 131072 context
+        if 'grok-2' in model_lower:
+            return 131072
+        # Grok beta models
+        if 'grok-beta' in model_lower or 'grok-vision-beta' in model_lower:
+            return 131072
+        return 131072  # Default for Grok models
+
+    @staticmethod
+    def _get_zhipu_context_length(model: str) -> int:
+        """Get context length for Zhipu AI (智谱AI) models."""
+        model_lower = model.lower()
+        # GLM-4-Long has 1M context
+        if 'glm-4-long' in model_lower:
+            return 1000000
+        # GLM-4.7 models have 128K context
+        if 'glm-4.7-flashx' in model_lower:
+            return 128000
+        if 'glm-4.7-flash' in model_lower:
+            return 128000
+        if 'glm-4.7' in model_lower:
+            return 128000
+        # GLM-4.6 models have 128K context
+        if 'glm-4.6v-flashx' in model_lower:
+            return 128000
+        if 'glm-4.6' in model_lower:
+            return 128000
+        # GLM-4.5-Air has 128K context
+        if 'glm-4.5-air' in model_lower:
+            return 128000
+        # GLM-Z1 models have 128K context
+        if 'glm-z1' in model_lower:
+            return 128000
+        # GLM-4-Plus has 128K context
+        if 'glm-4-plus' in model_lower:
+            return 128000
+        # GLM-4-Air/AirX have 128K context
+        if 'glm-4-air' in model_lower:
+            return 128000
+        # GLM-4-Flash/FlashX have 128K context
+        if 'glm-4-flash' in model_lower:
+            return 128000
+        # GLM-4 base has 128K context
+        if 'glm-4' in model_lower:
+            return 128000
+        return 128000  # Default for GLM models
+
+    @staticmethod
     def _get_lmstudio_context_length(model: str) -> int:
         """Fetch context length from LM Studio API."""
         try:
@@ -193,6 +267,10 @@ Transcription:
             return FormatService._get_anthropic_context_length(model)
         elif provider == 'gemini':
             return FormatService._get_gemini_known_context(model)
+        elif provider == 'xai':
+            return FormatService._get_xai_context_length(model)
+        elif provider == 'zhipu':
+            return FormatService._get_zhipu_context_length(model)
         elif provider == 'lmstudio':
             return FormatService.infer_context_length_from_model_name(model)
         return 4096  # Conservative default
@@ -225,6 +303,12 @@ Transcription:
         elif provider == 'gemini':
             # Gemini 1.5 has 8K output by default, 1.5 Pro has up to 8K
             return min(8192, context_length // 4)
+        elif provider == 'xai':
+            # Grok models have up to 16K output tokens
+            return min(16384, context_length // 4)
+        elif provider == 'zhipu':
+            # Zhipu GLM-4 models have up to 4K output tokens
+            return min(4096, context_length // 4)
         elif provider == 'lmstudio':
             # Local models - be conservative
             return min(16384, context_length // 4)
@@ -254,6 +338,10 @@ Transcription:
             return FormatService._format_with_anthropic(raw_text, model, stream_callback)
         elif provider == 'gemini':
             return FormatService._format_with_gemini(raw_text, model, stream_callback)
+        elif provider == 'xai':
+            return FormatService._format_with_xai(raw_text, model, stream_callback)
+        elif provider == 'zhipu':
+            return FormatService._format_with_zhipu(raw_text, model, stream_callback)
         elif provider == 'lmstudio':
             return FormatService._format_with_lmstudio(raw_text, model, stream_callback, context_length)
         else:
@@ -395,6 +483,86 @@ Transcription:
             response.raise_for_status()
             data = response.json()
             return data['candidates'][0]['content']['parts'][0]['text']
+
+    @staticmethod
+    def _format_with_xai(raw_text: str, model: str, stream_callback=None) -> str:
+        """Format text using xAI (Grok) - OpenAI-compatible API."""
+        api_key = current_app.config.get('XAI_API_KEY')
+        if not api_key:
+            raise ValueError("XAI_API_KEY not configured")
+
+        client = FormatService.get_xai_client()
+        max_tokens = FormatService.get_max_output_tokens('xai', model)
+
+        if stream_callback:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": FormatService.SYSTEM_PROMPT},
+                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
+                ],
+                temperature=0.3,
+                max_tokens=max_tokens,
+                stream=True
+            )
+            result = ""
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    text = chunk.choices[0].delta.content
+                    result += text
+                    stream_callback(text)
+            return result
+        else:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": FormatService.SYSTEM_PROMPT},
+                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
+                ],
+                temperature=0.3,
+                max_tokens=max_tokens
+            )
+            return response.choices[0].message.content
+
+    @staticmethod
+    def _format_with_zhipu(raw_text: str, model: str, stream_callback=None) -> str:
+        """Format text using Zhipu AI (智谱AI/BigModel) - OpenAI-compatible API."""
+        api_key = current_app.config.get('ZHIPU_API_KEY')
+        if not api_key:
+            raise ValueError("ZHIPU_API_KEY not configured")
+
+        client = FormatService.get_zhipu_client()
+        max_tokens = FormatService.get_max_output_tokens('zhipu', model)
+
+        if stream_callback:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": FormatService.SYSTEM_PROMPT},
+                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
+                ],
+                temperature=0.3,
+                max_tokens=max_tokens,
+                stream=True
+            )
+            result = ""
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    text = chunk.choices[0].delta.content
+                    result += text
+                    stream_callback(text)
+            return result
+        else:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": FormatService.SYSTEM_PROMPT},
+                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
+                ],
+                temperature=0.3,
+                max_tokens=max_tokens
+            )
+            return response.choices[0].message.content
 
     @staticmethod
     def _format_with_lmstudio(raw_text: str, model: str, stream_callback=None, context_length=None) -> str:
