@@ -40,7 +40,7 @@ class TranscribeService:
     """Service for transcribing audio/video files."""
 
     WHISPER_MODELS = ['medium', 'large', 'large-v3']
-    FASTER_WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large-v2', 'large-v3']
+    FASTER_WHISPER_MODELS = ['medium', 'large-v2', 'large-v3']
 
     @staticmethod
     def get_audio_duration(file_path: str) -> float:
@@ -90,7 +90,7 @@ class TranscribeService:
         """Transcribe using OpenAI Whisper."""
         # Validate model name
         if model_name not in TranscribeService.WHISPER_MODELS:
-            model_name = 'base'
+            model_name = 'medium'
 
         # Get audio duration for progress tracking
         duration = TranscribeService.get_audio_duration(file_path)
@@ -169,7 +169,7 @@ class TranscribeService:
 
         # Validate model name
         if model_name not in TranscribeService.FASTER_WHISPER_MODELS:
-            model_name = 'base'
+            model_name = 'medium'
 
         # Get audio duration for progress tracking
         duration = TranscribeService.get_audio_duration(file_path)
@@ -257,4 +257,3 @@ class TranscribeService:
                 if files:
                     return max(files, key=os.path.getctime)
                 raise FileNotFoundError(f"Could not find downloaded file for {url}")
-
