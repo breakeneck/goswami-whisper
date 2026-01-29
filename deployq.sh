@@ -1,7 +1,11 @@
+#!/bin/bash                                                                                                                                             │
+
 git fetch origin main
 git reset --hard origin/main
 
 source ./venv/bin/activate
+
+pip install -r requirements.txt
 
 # Flask-Migrate: Initialize if migrations/versions doesn't exist
 if [ ! -d "migrations/versions" ]; then
