@@ -10,6 +10,7 @@ class PreferencesService:
     PREFERENCES_FILE = 'preferences.ini'
     SECTION_TRANSCRIBE = 'transcribe'
     SECTION_FORMAT = 'format'
+    SECTION_PROMPT = 'prompt'
 
     @classmethod
     def _get_preferences_path(cls):
@@ -82,3 +83,29 @@ class PreferencesService:
             'transcribe': cls.get_transcribe_preferences(),
             'format': cls.get_format_preferences()
         }
+
+    @classmethod
+    def get_system_prompt(cls):
+        """Get custom system prompt for formatting."""
+        config = cls._load_config()
+        if config.has_section(cls.SECTION_PROMPT):
+            return config.get(cls.SECTION_PROMPT, 'system_prompt', fallback=None)
+        return None
+
+    @classmethod
+    def set_system_prompt(cls, prompt):
+        """Save custom system prompt for formatting."""
+        config = cls._load_config()
+        if not config.has_section(cls.SECTION_PROMPT):
+            config.add_section(cls.SECTION_PROMPT)
+        config.set(cls.SECTION_PROMPT, 'system_prompt', prompt)
+        cls._save_config(config)
+
+    @classmethod
+    def clear_system_prompt(cls):
+        """Clear custom system prompt (revert to default)."""
+        config = cls._load_config()
+        if config.has_section(cls.SECTION_PROMPT):
+            config.remove_section(cls.SECTION_PROMPT)
+            cls._save_config(config)
+

@@ -67,6 +67,15 @@ class FormatService:
     FORMAT_PROMPT = """Транскрипция:
 """
 
+    @classmethod
+    def get_system_prompt(cls):
+        """Get the system prompt - custom from preferences or default."""
+        from app.services.preferences_service import PreferencesService
+        custom_prompt = PreferencesService.get_system_prompt()
+        if custom_prompt:
+            return custom_prompt
+        return cls.SYSTEM_PROMPT
+
     @staticmethod
     def get_openai_client() -> OpenAI:
         """Get OpenAI client with API key from config."""
@@ -395,12 +404,13 @@ class FormatService:
         """Format text using OpenAI GPT."""
         client = FormatService.get_openai_client()
         max_tokens = FormatService.get_max_output_tokens('openai', model)
+        system_prompt = FormatService.get_system_prompt()
 
         if stream_callback:
             response = client.chat.completions.create(
                 model=model,
                 messages=[
-                    {"role": "system", "content": FormatService.SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
                 # temperature=0.3,
@@ -418,7 +428,7 @@ class FormatService:
             response = client.chat.completions.create(
                 model=model,
                 messages=[
-                    {"role": "system", "content": FormatService.SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
                 # temperature=0.3,
@@ -431,13 +441,14 @@ class FormatService:
         """Format text using Claude (Anthropic)."""
         client = FormatService.get_anthropic_client()
         max_tokens = FormatService.get_max_output_tokens('anthropic', model)
+        system_prompt = FormatService.get_system_prompt()
 
         if stream_callback:
             with client.messages.stream(
                 model=model,
                 max_tokens=max_tokens,
                 messages=[{"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}],
-                system=FormatService.SYSTEM_PROMPT
+                system=system_prompt
             ) as stream:
                 result = ""
                 for text in stream.text_stream:
@@ -449,7 +460,7 @@ class FormatService:
                 model=model,
                 max_tokens=max_tokens,
                 messages=[{"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}],
-                system=FormatService.SYSTEM_PROMPT
+                system=system_prompt
             )
             return response.content[0].text
 
@@ -462,10 +473,11 @@ class FormatService:
 
         max_tokens = FormatService.get_max_output_tokens('gemini', model)
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+        system_prompt = FormatService.get_system_prompt()
 
         payload = {
             "contents": [{
-                "parts": [{"text": FormatService.SYSTEM_PROMPT + "\n\n" + FormatService.FORMAT_PROMPT + raw_text}]
+                "parts": [{"text": system_prompt + "\n\n" + FormatService.FORMAT_PROMPT + raw_text}]
             }],
             "generationConfig": {
                 "temperature": 0.3,
@@ -536,12 +548,13 @@ class FormatService:
 
         client = FormatService.get_xai_client()
         max_tokens = FormatService.get_max_output_tokens('xai', model)
+        system_prompt = FormatService.get_system_prompt()
 
         if stream_callback:
             response = client.chat.completions.create(
                 model=model,
                 messages=[
-                    {"role": "system", "content": FormatService.SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
                 temperature=0.3,
@@ -559,7 +572,7 @@ class FormatService:
             response = client.chat.completions.create(
                 model=model,
                 messages=[
-                    {"role": "system", "content": FormatService.SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
                 temperature=0.3,
@@ -576,12 +589,13 @@ class FormatService:
 
         client = FormatService.get_zhipu_client()
         max_tokens = FormatService.get_max_output_tokens('zhipu', model)
+        system_prompt = FormatService.get_system_prompt()
 
         if stream_callback:
             response = client.chat.completions.create(
                 model=model,
                 messages=[
-                    {"role": "system", "content": FormatService.SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
                 # temperature=0.3,
@@ -599,7 +613,7 @@ class FormatService:
             response = client.chat.completions.create(
                 model=model,
                 messages=[
-                    {"role": "system", "content": FormatService.SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
                 # temperature=0.3,
@@ -611,6 +625,7 @@ class FormatService:
     def _format_with_lmstudio(raw_text: str, model: str, stream_callback=None, context_length=None) -> str:
         """Format text using LM Studio (OpenAI-compatible API)."""
         client = FormatService.get_lmstudio_client()
+        system_prompt = FormatService.get_system_prompt()
 
         # Build extra params for context length if specified
         extra_body = {}
@@ -621,7 +636,7 @@ class FormatService:
             response = client.chat.completions.create(
                 model=model,
                 messages=[
-                    {"role": "system", "content": FormatService.SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
                 temperature=0.3,
@@ -639,7 +654,7 @@ class FormatService:
             response = client.chat.completions.create(
                 model=model,
                 messages=[
-                    {"role": "system", "content": FormatService.SYSTEM_PROMPT},
+                    {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
                 temperature=0.3,

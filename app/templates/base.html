@@ -135,6 +135,11 @@
                             <i class="bi bi-upload me-1"></i>Upload
                         </a>
                     </li>
+                    <li class="nav-item">
+                        <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#settingsModal">
+                            <i class="bi bi-gear me-1"></i>Settings
+                        </a>
+                    </li>
                 </ul>
                 <!-- Search Form in Navbar -->
                 <form class="d-flex search-container" action="{{ url_for('search.search') }}" method="GET">
@@ -180,6 +185,41 @@
         </div>
     </div>
 
+    <!-- Settings Modal -->
+    <div class="modal fade" id="settingsModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-gear me-2"></i>Settings</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-chat-square-text me-1"></i>System Prompt for Formatting
+                        </label>
+                        <p class="text-muted small">
+                            This prompt is used when formatting transcriptions with LLM.
+                            Leave empty to use the default prompt.
+                        </p>
+                        <textarea class="form-control" id="systemPromptInput" rows="15"
+                                  style="font-family: monospace; font-size: 0.85rem;"></textarea>
+                        <div class="form-text" id="promptStatus"></div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" id="resetPromptBtn">
+                        <i class="bi bi-arrow-counterclockwise me-1"></i>Reset to Default
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="savePromptBtn">
+                        <i class="bi bi-check-lg me-1"></i>Save
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer class="bg-dark text-light py-3 mt-auto">
         <div class="container text-center">
@@ -198,6 +238,79 @@
         function hideLoading() {
             document.getElementById('loadingOverlay').classList.remove('active');
         }
+
+        // Settings Modal functionality
+        let defaultPrompt = '';
+
+        document.getElementById('settingsModal')?.addEventListener('show.bs.modal', async function() {
+            try {
+                const response = await fetch('/api/settings/prompt');
+                const data = await response.json();
+                defaultPrompt = data.default_prompt;
+                const textarea = document.getElementById('systemPromptInput');
+                const status = document.getElementById('promptStatus');
+
+                if (data.is_custom) {
+                    textarea.value = data.custom_prompt;
+                    status.textContent = 'Using custom prompt';
+                    status.className = 'form-text text-success';
+                } else {
+                    textarea.value = data.default_prompt;
+                    status.textContent = 'Using default prompt';
+                    status.className = 'form-text text-muted';
+                }
+            } catch (error) {
+                console.error('Failed to load prompt:', error);
+            }
+        });
+
+        document.getElementById('savePromptBtn')?.addEventListener('click', async function() {
+            const prompt = document.getElementById('systemPromptInput').value.trim();
+            if (!prompt) {
+                alert('Prompt cannot be empty');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/settings/prompt', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: prompt })
+                });
+                const data = await response.json();
+
+                if (data.success) {
+                    const status = document.getElementById('promptStatus');
+                    status.textContent = 'Prompt saved successfully!';
+                    status.className = 'form-text text-success';
+                    setTimeout(() => {
+                        bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide();
+                    }, 1000);
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                alert('Failed to save prompt: ' + error);
+            }
+        });
+
+        document.getElementById('resetPromptBtn')?.addEventListener('click', async function() {
+            if (!confirm('Reset to default prompt?')) return;
+
+            try {
+                const response = await fetch('/api/settings/prompt', { method: 'DELETE' });
+                const data = await response.json();
+
+                if (data.success) {
+                    document.getElementById('systemPromptInput').value = defaultPrompt;
+                    const status = document.getElementById('promptStatus');
+                    status.textContent = 'Reset to default prompt';
+                    status.className = 'form-text text-muted';
+                }
+            } catch (error) {
+                alert('Failed to reset prompt: ' + error);
+            }
+        });
     </script>
     {% block extra_js %}{% endblock %}
 </body>

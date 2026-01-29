@@ -578,3 +578,38 @@ def search():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+# ============ Settings Endpoints ============
+
+@api_bp.route('/settings/prompt', methods=['GET'])
+def get_system_prompt():
+    """Get current system prompt (custom or default)."""
+    custom_prompt = PreferencesService.get_system_prompt()
+    default_prompt = FormatService.SYSTEM_PROMPT
+    return jsonify({
+        'custom_prompt': custom_prompt,
+        'default_prompt': default_prompt,
+        'is_custom': custom_prompt is not None
+    })
+
+
+@api_bp.route('/settings/prompt', methods=['POST'])
+def set_system_prompt():
+    """Set custom system prompt."""
+    data = request.get_json()
+    prompt = data.get('prompt', '').strip()
+
+    if not prompt:
+        return jsonify({'error': 'Prompt cannot be empty'}), 400
+
+    PreferencesService.set_system_prompt(prompt)
+    return jsonify({'success': True, 'message': 'Prompt saved'})
+
+
+@api_bp.route('/settings/prompt', methods=['DELETE'])
+def reset_system_prompt():
+    """Reset to default system prompt."""
+    PreferencesService.clear_system_prompt()
+    return jsonify({'success': True, 'message': 'Prompt reset to default'})
+
+
