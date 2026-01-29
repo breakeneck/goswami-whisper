@@ -39,7 +39,7 @@ class TqdmProgressTracker:
 class TranscribeService:
     """Service for transcribing audio/video files."""
 
-    WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large']
+    WHISPER_MODELS = ['medium', 'large', 'large-v3']
     FASTER_WHISPER_MODELS = ['tiny', 'base', 'small', 'medium', 'large-v2', 'large-v3']
 
     @staticmethod
