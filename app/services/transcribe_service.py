@@ -124,7 +124,17 @@ class TranscribeService:
                 whisper.transcribe.tqdm = progress_tracker
             tqdm.tqdm = progress_tracker
 
-            result = model.transcribe(file_path, verbose=False)
+            # Use initial_prompt to guide the model toward Russian transcription
+            # and condition_on_previous_text=False to prevent hallucination spreading
+            initial_prompt = "Харе Кришна. Шрила Прабхупада. Преданное служение. Бхагавад-гита. Шримад-Бхагаватам."
+            result = model.transcribe(
+                file_path,
+                verbose=False,
+                language="ru",
+                task="transcribe",
+                initial_prompt=initial_prompt,
+                condition_on_previous_text=False
+            )
         finally:
             if original_whisper_tqdm is not None:
                 whisper.transcribe.tqdm = original_whisper_tqdm
@@ -170,7 +180,16 @@ class TranscribeService:
 
         print(f"Starting Faster Whisper transcription for: {file_path}")
 
-        segments, info = model.transcribe(file_path, beam_size=5, language="ru", task="transcribe")
+        # Use initial_prompt to guide the model toward Russian transcription
+        initial_prompt = "Харе Кришна. Шрила Прабхупада. Преданное служение. Бхагавад-гита. Шримад-Бхагаватам."
+        segments, info = model.transcribe(
+            file_path,
+            beam_size=5,
+            language="ru",
+            task="transcribe",
+            initial_prompt=initial_prompt,
+            condition_on_previous_text=False
+        )
 
         # Collect all segments with progress tracking
         text_parts = []

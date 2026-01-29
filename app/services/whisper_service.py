@@ -246,7 +246,17 @@ class WhisperService:
             tqdm.tqdm = progress_tracker
             print(f"[DEBUG] Patched tqdm.tqdm")
 
-            result = model.transcribe(file_path, verbose=False, language="ru", task="transcribe")
+            # Use initial_prompt to guide the model toward Russian transcription
+            # and condition_on_previous_text=False to prevent hallucination spreading
+            initial_prompt = "Харе Кришна. Шрила Прабхупада. Преданное служение. Бхагавад-гита. Шримад-Бхагаватам."
+            result = model.transcribe(
+                file_path,
+                verbose=False,
+                language="ru",
+                task="transcribe",
+                initial_prompt=initial_prompt,
+                condition_on_previous_text=False
+            )
         except Exception as e:
             print(f"Transcription error: {e}")
             raise
