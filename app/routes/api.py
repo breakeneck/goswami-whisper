@@ -12,6 +12,7 @@ from app.models.upload import Upload, Transcribe, Content
 from app.services.transcribe_service import TranscribeService
 from app.services.format_service import FormatService
 from app.services.embedding_service import EmbeddingService
+from app.services.preferences_service import PreferencesService
 
 api_bp = Blueprint('api', __name__)
 
@@ -467,6 +468,36 @@ def get_providers():
         pass
 
     return jsonify(config)
+
+
+@api_bp.route('/config/preferences', methods=['GET'])
+def get_preferences():
+    """Get saved user preferences (last used provider/model)."""
+    return jsonify(PreferencesService.get_all_preferences())
+
+
+@api_bp.route('/config/preferences/transcribe', methods=['POST'])
+def save_transcribe_preferences():
+    """Save transcribe preferences."""
+    data = request.get_json()
+    provider = data.get('provider')
+    model = data.get('model')
+    if provider and model:
+        PreferencesService.set_transcribe_preferences(provider, model)
+        return jsonify({'success': True})
+    return jsonify({'error': 'provider and model are required'}), 400
+
+
+@api_bp.route('/config/preferences/format', methods=['POST'])
+def save_format_preferences():
+    """Save format preferences."""
+    data = request.get_json()
+    provider = data.get('provider')
+    model = data.get('model')
+    if provider and model:
+        PreferencesService.set_format_preferences(provider, model)
+        return jsonify({'success': True})
+    return jsonify({'error': 'provider and model are required'}), 400
 
 
 # ============ LM Studio Endpoints ============

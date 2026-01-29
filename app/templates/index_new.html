@@ -415,11 +415,13 @@
 // Global state
 let providersConfig = {};
 let uploadsData = [];
+let userPreferences = { transcribe: {}, format: {} };
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     loadProviders();
     loadUploads();
+    loadPreferences();
     setupEventListeners();
 });
 
@@ -432,6 +434,16 @@ async function loadProviders() {
         updateFormatModels();
     } catch (error) {
         console.error('Error loading providers:', error);
+    }
+}
+
+// Load user preferences
+async function loadPreferences() {
+    try {
+        const response = await fetch('/api/config/preferences');
+        userPreferences = await response.json();
+    } catch (error) {
+        console.error('Error loading preferences:', error);
     }
 }
 
@@ -771,13 +783,21 @@ function setupEventListeners() {
 
 // Update model dropdowns
 function updateTranscribeModels() {
-    const provider = document.getElementById('transcribeProvider').value;
+    const providerSelect = document.getElementById('transcribeProvider');
+    const provider = providerSelect.value;
     const modelSelect = document.getElementById('transcribeModel');
     const models = providersConfig.transcribe?.[provider]?.models || [];
 
     modelSelect.innerHTML = models.map(m =>
         `<option value="${m}">${m}${getModelDescription(provider, m)}</option>`
     ).join('');
+
+    // Select last used model for this provider if available
+    const savedModel = userPreferences.transcribe?.model;
+    const savedProvider = userPreferences.transcribe?.provider;
+    if (savedProvider === provider && savedModel && models.includes(savedModel)) {
+        modelSelect.value = savedModel;
+    }
 }
 
 function updateFormatModels() {
@@ -795,6 +815,13 @@ function updateFormatModels() {
             const contextStr = info ? ` (${formatTokenCount(info.context_length)})` : '';
             return `<option value="${m}" data-context="${info?.context_length || 0}">${m}${contextStr}</option>`;
         }).join('');
+    }
+
+    // Select last used model for this provider if available
+    const savedModel = userPreferences.format?.model;
+    const savedProvider = userPreferences.format?.provider;
+    if (savedProvider === provider && savedModel && models.includes(savedModel)) {
+        modelSelect.value = savedModel;
     }
 
     // Show/hide context window selector for LM Studio
@@ -943,6 +970,13 @@ async function handleUpload() {
 // Open transcribe modal
 function openTranscribeModal(uploadId) {
     document.getElementById('transcribeUploadId').value = uploadId;
+
+    // Apply saved provider preference
+    const providerSelect = document.getElementById('transcribeProvider');
+    if (userPreferences.transcribe?.provider) {
+        providerSelect.value = userPreferences.transcribe.provider;
+    }
+
     updateTranscribeModels();
     new bootstrap.Modal(document.getElementById('transcribeModal')).show();
 }
@@ -952,6 +986,9 @@ async function handleTranscribe() {
     const uploadId = document.getElementById('transcribeUploadId').value;
     const provider = document.getElementById('transcribeProvider').value;
     const model = document.getElementById('transcribeModel').value;
+
+    // Save preferences
+    saveTranscribePreferences(provider, model);
 
     try {
         const response = await fetch('/api/transcribe', {
@@ -973,6 +1010,21 @@ async function handleTranscribe() {
 
     } catch (error) {
         alert('Error: ' + error.message);
+    }
+}
+
+// Save transcribe preferences
+async function saveTranscribePreferences(provider, model) {
+    try {
+        await fetch('/api/config/preferences/transcribe', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({provider, model})
+        });
+        // Update local state
+        userPreferences.transcribe = {provider, model};
+    } catch (error) {
+        console.error('Error saving transcribe preferences:', error);
     }
 }
 
@@ -1014,6 +1066,13 @@ async function checkTranscriptionStatus(transcribeId) {
 // Open format modal
 function openFormatModal(transcribeId) {
     document.getElementById('formatTranscribeId').value = transcribeId;
+
+    // Apply saved provider preference
+    const providerSelect = document.getElementById('formatProvider');
+    if (userPreferences.format?.provider) {
+        providerSelect.value = userPreferences.format.provider;
+    }
+
     updateFormatModels();
     new bootstrap.Modal(document.getElementById('formatModal')).show();
 }
@@ -1023,6 +1082,9 @@ async function handleFormat() {
     const transcribeId = document.getElementById('formatTranscribeId').value;
     const provider = document.getElementById('formatProvider').value;
     const model = document.getElementById('formatModel').value;
+
+    // Save preferences
+    saveFormatPreferences(provider, model);
 
     // Build request body
     const requestBody = {transcribe_id: parseInt(transcribeId), provider, model};
@@ -1074,6 +1136,21 @@ async function handleFormat() {
 
     } catch (error) {
         alert('Error: ' + error.message);
+    }
+}
+
+// Save format preferences
+async function saveFormatPreferences(provider, model) {
+    try {
+        await fetch('/api/config/preferences/format', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({provider, model})
+        });
+        // Update local state
+        userPreferences.format = {provider, model};
+    } catch (error) {
+        console.error('Error saving format preferences:', error);
     }
 }
 
