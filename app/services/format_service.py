@@ -360,8 +360,8 @@ Transcription:
                     {"role": "system", "content": FormatService.SYSTEM_PROMPT},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                temperature=0.3,
-                max_completion_tokens=max_tokens,
+                # temperature=0.3,
+                # max_completion_tokens=max_tokens,
                 stream=True
             )
             result = ""
@@ -378,8 +378,8 @@ Transcription:
                     {"role": "system", "content": FormatService.SYSTEM_PROMPT},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                temperature=0.3,
-                max_completion_tokens=max_tokens
+                # temperature=0.3,
+                # max_completion_tokens=max_tokens
             )
             return response.choices[0].message.content
 
@@ -541,8 +541,8 @@ Transcription:
                     {"role": "system", "content": FormatService.SYSTEM_PROMPT},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                temperature=0.3,
-                max_tokens=max_tokens,
+                # temperature=0.3,
+                # max_tokens=max_tokens,
                 stream=True
             )
             result = ""
@@ -559,8 +559,8 @@ Transcription:
                     {"role": "system", "content": FormatService.SYSTEM_PROMPT},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                temperature=0.3,
-                max_tokens=max_tokens
+                # temperature=0.3,
+                # max_tokens=max_tokens
             )
             return response.choices[0].message.content
 
