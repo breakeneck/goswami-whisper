@@ -126,14 +126,23 @@ class TranscribeService:
 
             # Use initial_prompt to guide the model toward Russian transcription
             # and condition_on_previous_text=False to prevent hallucination spreading
-            initial_prompt = "Харе Кришна. Шрила Прабхупада. Преданное служение. Бхагавад-гита. Шримад-Бхагаватам."
+            initial_prompt = """Харе Кришна. Это устная лекция на русском языке.
+            В речи присутствует большое количество санскритских имён,
+            эпитетов и терминов гаудия-вайшнавской традиции.
+            Присутствуют имена и названия, связанные с Кришной,
+            Радхой, Враджем, преданными, ачарьями, лилами и шастрами.
+            Текст передаётся дословно, без художественной обработки.
+            """
+
             result = model.transcribe(
                 file_path,
                 verbose=False,
                 language="ru",
                 task="transcribe",
                 initial_prompt=initial_prompt,
-                condition_on_previous_text=False
+                condition_on_previous_text=False,
+                temperature=0.0,
+                beam_size=5
             )
         finally:
             if original_whisper_tqdm is not None:
