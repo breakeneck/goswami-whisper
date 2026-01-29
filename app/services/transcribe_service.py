@@ -141,8 +141,8 @@ class TranscribeService:
                 task="transcribe",
                 initial_prompt=initial_prompt,
                 condition_on_previous_text=False,
-                temperature=0.0,
-                beam_size=5
+                # temperature=0.0,
+                # beam_size=5
             )
         finally:
             if original_whisper_tqdm is not None:
