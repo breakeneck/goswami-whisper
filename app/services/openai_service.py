@@ -60,7 +60,7 @@ Transcription:
 
         response = client.messages.create(
             model=model,
-            max_tokens=max_tokens,
+            # max_tokens=max_tokens,
             messages=[
                 {
                     "role": "user",
@@ -92,7 +92,7 @@ Transcription:
                 }
             ],
             temperature=0.3,
-            max_tokens=max_tokens
+            # max_completion_tokens=max_tokens
         )
 
         return response.choices[0].message.content

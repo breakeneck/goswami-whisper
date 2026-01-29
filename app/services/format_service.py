@@ -361,7 +361,7 @@ Transcription:
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
                 temperature=0.3,
-                max_tokens=max_tokens,
+                max_completion_tokens=max_tokens,
                 stream=True
             )
             result = ""
@@ -379,7 +379,7 @@ Transcription:
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
                 temperature=0.3,
-                max_tokens=max_tokens
+                max_completion_tokens=max_tokens
             )
             return response.choices[0].message.content
 
