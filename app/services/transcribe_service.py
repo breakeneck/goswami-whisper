@@ -41,7 +41,7 @@ class TranscribeService:
 
     WHISPER_MODELS = ['medium', 'large', 'large-v3']
     FASTER_WHISPER_MODELS = ['medium', 'large-v2', 'large-v3']
-    QWEN3_ASR_MODELS = ['Qwen/Qwen3-ASR']
+    QWEN3_ASR_MODELS = [os.environ.get('QWEN3_ASR_MODEL', 'Qwen/Qwen3-ASR-1.7B')]
 
     @staticmethod
     def get_audio_duration(file_path: str) -> float:
@@ -239,14 +239,29 @@ class TranscribeService:
         device = 0 if use_cuda else -1
         torch_dtype = torch.float16 if use_cuda else torch.float32
 
+        hf_token = os.environ.get('HF_TOKEN') or os.environ.get('HUGGINGFACE_HUB_TOKEN')
+
         print(f"Loading Qwen3-ASR model: {model_name}")
         model_load_start = time.time()
-        asr = pipeline(
-            "automatic-speech-recognition",
-            model=model_name,
-            device=device,
-            model_kwargs={"torch_dtype": torch_dtype}
-        )
+
+        pipeline_kwargs = {
+            "model": model_name,
+            "device": device,
+            "model_kwargs": {"torch_dtype": torch_dtype}
+        }
+        if hf_token:
+            pipeline_kwargs["token"] = hf_token
+
+        try:
+            asr = pipeline("automatic-speech-recognition", **pipeline_kwargs)
+        except TypeError:
+            if "token" in pipeline_kwargs:
+                pipeline_kwargs.pop("token")
+                pipeline_kwargs["use_auth_token"] = hf_token
+                asr = pipeline("automatic-speech-recognition", **pipeline_kwargs)
+            else:
+                raise
+
         model_load_time = time.time() - model_load_start
         print(f"Model loaded in {model_load_time:.1f}s")
 

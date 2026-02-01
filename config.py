@@ -43,6 +43,10 @@ class Config:
     # Zhipu AI (智谱AI/BigModel)
     ZHIPU_API_KEY = os.environ.get('ZHIPU_API_KEY', '')
 
+    # Hugging Face
+    HF_TOKEN = os.environ.get('HF_TOKEN', os.environ.get('HUGGINGFACE_HUB_TOKEN', ''))
+    QWEN3_ASR_MODEL = os.environ.get('QWEN3_ASR_MODEL', 'Qwen/Qwen3-ASR-1.7B')
+
     # LM Studio
     LMSTUDIO_BASE_URL = os.environ.get('LMSTUDIO_BASE_URL', 'http://localhost:1234/v1')
 
@@ -58,7 +62,7 @@ class Config:
         },
         'qwen3-asr': {
             'name': 'Qwen3-ASR',
-            'models': ['Qwen/Qwen3-ASR']
+            'models': [QWEN3_ASR_MODEL]
         }
     }
 
