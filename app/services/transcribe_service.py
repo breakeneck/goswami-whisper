@@ -41,6 +41,7 @@ class TranscribeService:
 
     WHISPER_MODELS = ['medium', 'large', 'large-v3']
     FASTER_WHISPER_MODELS = ['medium', 'large-v2', 'large-v3']
+    QWEN3_ASR_MODELS = ['Qwen/Qwen3-ASR']
 
     @staticmethod
     def get_audio_duration(file_path: str) -> float:
@@ -78,6 +79,8 @@ class TranscribeService:
             return TranscribeService._transcribe_with_whisper(file_path, model, progress_callback)
         elif provider == 'faster-whisper':
             return TranscribeService._transcribe_with_faster_whisper(file_path, model, progress_callback)
+        elif provider == 'qwen3-asr':
+            return TranscribeService._transcribe_with_qwen3_asr(file_path, model, progress_callback)
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
@@ -215,6 +218,55 @@ class TranscribeService:
 
         print(f"Faster Whisper transcription complete")
         return " ".join(text_parts)
+
+    @staticmethod
+    def _transcribe_with_qwen3_asr(
+        file_path: str,
+        model_name: str,
+        progress_callback: Optional[Callable[[float], None]] = None
+    ) -> str:
+        """Transcribe using Qwen3-ASR via Transformers."""
+        try:
+            import torch
+            from transformers import pipeline
+        except ImportError:
+            raise ImportError("Qwen3-ASR requires transformers and torchaudio. Run: pip install transformers torchaudio")
+
+        if model_name not in TranscribeService.QWEN3_ASR_MODELS:
+            model_name = TranscribeService.QWEN3_ASR_MODELS[0]
+
+        use_cuda = torch.cuda.is_available()
+        device = 0 if use_cuda else -1
+        torch_dtype = torch.float16 if use_cuda else torch.float32
+
+        print(f"Loading Qwen3-ASR model: {model_name}")
+        model_load_start = time.time()
+        asr = pipeline(
+            "automatic-speech-recognition",
+            model=model_name,
+            device=device,
+            model_kwargs={"torch_dtype": torch_dtype}
+        )
+        model_load_time = time.time() - model_load_start
+        print(f"Model loaded in {model_load_time:.1f}s")
+
+        if progress_callback:
+            progress_callback(1.0)
+
+        print(f"Starting Qwen3-ASR transcription for: {file_path}")
+        result = asr(
+            file_path,
+            chunk_length_s=30,
+            stride_length_s=5
+        )
+
+        if progress_callback:
+            progress_callback(100.0)
+
+        print("Qwen3-ASR transcription complete")
+        if isinstance(result, dict) and "text" in result:
+            return result["text"]
+        return str(result)
 
     @staticmethod
     def download_from_url(url: str, output_dir: str) -> str:

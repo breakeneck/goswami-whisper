@@ -55,6 +55,10 @@ class Config:
         'faster-whisper': {
             'name': 'Faster Whisper',
             'models': ['medium', 'large-v2', 'large-v3']
+        },
+        'qwen3-asr': {
+            'name': 'Qwen3-ASR',
+            'models': ['Qwen/Qwen3-ASR']
         }
     }
 
@@ -88,4 +92,3 @@ class Config:
 
     # ChromaDB
     CHROMA_PERSIST_DIR = os.environ.get('CHROMA_PERSIST_DIR', os.path.join(os.path.dirname(__file__), 'chroma_db'))
-
