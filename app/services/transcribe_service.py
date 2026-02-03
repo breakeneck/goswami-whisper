@@ -225,43 +225,31 @@ class TranscribeService:
         model_name: str,
         progress_callback: Optional[Callable[[float], None]] = None
     ) -> str:
-        """Transcribe using Qwen3-ASR via Transformers."""
+        """Transcribe using Qwen3-ASR via qwen_asr."""
         try:
             import torch
-            from transformers import pipeline
+            from qwen_asr import Qwen3ASRModel
         except ImportError:
-            raise ImportError("Qwen3-ASR requires transformers and torchaudio. Run: pip install transformers torchaudio")
+            raise ImportError("Qwen3-ASR requires qwen-asr and torch. Run: pip install qwen-asr torch")
 
         if model_name not in TranscribeService.QWEN3_ASR_MODELS:
             model_name = TranscribeService.QWEN3_ASR_MODELS[0]
 
         use_cuda = torch.cuda.is_available()
-        device = 0 if use_cuda else -1
-        torch_dtype = torch.float16 if use_cuda else torch.float32
-
-        hf_token = os.environ.get('HF_TOKEN') or os.environ.get('HUGGINGFACE_HUB_TOKEN')
+        device_map = "cuda:0" if use_cuda else "cpu"
+        dtype = torch.bfloat16 if use_cuda else torch.float32
+        attn_impl = "flash_attention_2" if use_cuda else "sdpa"
 
         print(f"Loading Qwen3-ASR model: {model_name}")
         model_load_start = time.time()
-
-        pipeline_kwargs = {
-            "model": model_name,
-            "device": device,
-            "model_kwargs": {"torch_dtype": torch_dtype}
-        }
-        if hf_token:
-            pipeline_kwargs["token"] = hf_token
-
-        try:
-            asr = pipeline("automatic-speech-recognition", **pipeline_kwargs)
-        except TypeError:
-            if "token" in pipeline_kwargs:
-                pipeline_kwargs.pop("token")
-                pipeline_kwargs["use_auth_token"] = hf_token
-                asr = pipeline("automatic-speech-recognition", **pipeline_kwargs)
-            else:
-                raise
-
+        model = Qwen3ASRModel.from_pretrained(
+            model_name,
+            dtype=dtype,
+            device_map=device_map,
+            attn_implementation=attn_impl,
+            max_inference_batch_size=32,
+            max_new_tokens=256,
+        )
         model_load_time = time.time() - model_load_start
         print(f"Model loaded in {model_load_time:.1f}s")
 
@@ -269,19 +257,18 @@ class TranscribeService:
             progress_callback(1.0)
 
         print(f"Starting Qwen3-ASR transcription for: {file_path}")
-        result = asr(
-            file_path,
-            chunk_length_s=30,
-            stride_length_s=5
+        results = model.transcribe(
+            audio=file_path,
+            language="Russian",
         )
 
         if progress_callback:
             progress_callback(100.0)
 
         print("Qwen3-ASR transcription complete")
-        if isinstance(result, dict) and "text" in result:
-            return result["text"]
-        return str(result)
+        if results:
+            return results[0].text
+        return ""
 
     @staticmethod
     def download_from_url(url: str, output_dir: str) -> str:
