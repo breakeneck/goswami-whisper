@@ -26,7 +26,7 @@ class Config:
     # File uploads
     UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER', os.path.join(os.path.dirname(__file__), 'uploads'))
     ALLOWED_EXTENSIONS = {'mp3', 'mp4', 'wav', 'webm', 'm4a', 'ogg', 'flac', 'mpeg', 'mpga'}
-    MAX_CONTENT_LENGTH = 500 * 1024 * 1024  # 500 MB max file size
+    MAX_CONTENT_LENGTH = 4 * 1024 * 1024 * 1024  # 4 GB max file size
 
     # OpenAI
     OPENAI_API_KEY = os.environ.get('OPENAI_API_KEY', '')
