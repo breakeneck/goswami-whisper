@@ -1796,7 +1796,17 @@ function computeSideBySideDiff(baseText, compareText) {
 function generateSentenceHash(sentence) {
     // Generate a simple hash from first 3 words for cross-panel synchronization
     const words = sentence.trim().split(/\s+/).slice(0, 3);
-    return words.join('_').toLowerCase().replace(/[^a-z0-9_]/g, '');
+    // Use simple hash code to support any characters (including Cyrillic)
+    let hash = '';
+    for (const word of words) {
+        let h = 0;
+        for (let i = 0; i < word.length; i++) {
+            h = ((h << 5) - h) + word.charCodeAt(i);
+            h = h & h; // Convert to 32bit integer
+        }
+        hash += (hash ? '_' : '') + Math.abs(h).toString(36);
+    }
+    return hash;
 }
 
 function longestCommonSubsequence(arr1, arr2) {
