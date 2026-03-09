@@ -1562,9 +1562,6 @@ async function showSideBySide() {
         texts.push(text);
     }
 
-    // Use first selected as base for highlighting differences
-    const baseText = texts[0];
-
     // Build panels HTML
     let panelsHtml = '';
     for (let i = 0; i < numPanels; i++) {
@@ -1572,12 +1569,14 @@ async function showSideBySide() {
         const text = texts[i];
         const label = item.isRawTranscribe ? 'Transcribe' : `${item.provider}/${item.model}`;
 
-        // Highlight differences compared to first panel
+        // Compute diff for all panels
         let contentHtml;
         if (i === 0) {
-            contentHtml = escapeHtml(text);
+            // First panel: show removed words (words in base that are not in others)
+            contentHtml = computeSourceDiff(texts, 0);
         } else {
-            contentHtml = computeSideBySideDiff(baseText, text);
+            // Other panels: show added words compared to first
+            contentHtml = computeSideBySideDiff(texts[0], text);
         }
 
         panelsHtml += `
@@ -1624,6 +1623,49 @@ function setupSyncScroll() {
             setTimeout(() => { isScrolling = false; }, 50);
         });
     });
+}
+
+function computeSourceDiff(texts, sourceIndex) {
+    // For source panel: highlight words that are removed (not present in other texts)
+    const sourceWords = texts[sourceIndex].split(/(\s+)/);
+    
+    // Collect all words from other texts
+    const otherWordsSets = [];
+    for (let i = 0; i < texts.length; i++) {
+        if (i !== sourceIndex) {
+            const words = texts[i].split(/(\s+)/).filter(w => w.trim());
+            otherWordsSets.push(new Set(words));
+        }
+    }
+    
+    let html = '';
+    
+    for (const word of sourceWords) {
+        if (!word.trim()) {
+            // Preserve whitespace
+            html += escapeHtml(word);
+            continue;
+        }
+        
+        // Check if this word exists in ALL other texts
+        let existsInAll = true;
+        for (const wordSet of otherWordsSets) {
+            if (!wordSet.has(word)) {
+                existsInAll = false;
+                break;
+            }
+        }
+        
+        if (existsInAll) {
+            // Word exists in all other texts - no highlight
+            html += escapeHtml(word);
+        } else {
+            // Word is missing from at least one other text - highlight as removed
+            html += `<span class="diff-removed">${escapeHtml(word)}</span>`;
+        }
+    }
+    
+    return html;
 }
 
 function computeSideBySideDiff(baseText, compareText) {
