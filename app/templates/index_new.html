@@ -112,6 +112,28 @@
         background-color: #f8d7da;
         color: #721c24;
     }
+    .compare-sentence {
+        cursor: pointer;
+        border-radius: 3px;
+        padding: 1px 2px;
+        margin: -1px -2px;
+        transition: background-color 0.15s;
+    }
+    .compare-sentence:hover {
+        background-color: #e9ecef;
+    }
+    .compare-sentence.highlighted {
+        background-color: #fff3cd !important;
+        box-shadow: 0 0 0 2px #ffc107;
+    }
+    .compare-sentence.highlighted.diff-added {
+        background-color: #a6d9a9 !important;
+        box-shadow: 0 0 0 2px #28a745;
+    }
+    .compare-sentence.highlighted.diff-removed {
+        background-color: #f5c6cb !important;
+        box-shadow: 0 0 0 2px #dc3545;
+    }
 </style>
 {% endblock %}
 
@@ -1598,6 +1620,9 @@ async function showSideBySide() {
 
     // Sync scroll across panels
     setupSyncScroll();
+    
+    // Setup sentence click synchronization
+    setupSentenceClickSync();
 }
 
 function setupSyncScroll() {
@@ -1625,9 +1650,48 @@ function setupSyncScroll() {
     });
 }
 
+function setupSentenceClickSync() {
+    // Setup click handlers for sentence synchronization
+    const allSentences = document.querySelectorAll('.compare-sentence');
+    
+    allSentences.forEach(sentence => {
+        sentence.addEventListener('click', function(e) {
+            e.stopPropagation();
+            
+            const sentenceHash = this.getAttribute('data-sentence-hash');
+            
+            // Toggle highlight
+            const isCurrentlyHighlighted = this.classList.contains('highlighted');
+            
+            // Remove all highlights first
+            document.querySelectorAll('.compare-sentence.highlighted').forEach(s => {
+                s.classList.remove('highlighted');
+            });
+            
+            // If wasn't highlighted, add highlight to all sentences with same hash
+            if (!isCurrentlyHighlighted && sentenceHash) {
+                document.querySelectorAll(`.compare-sentence[data-sentence-hash="${sentenceHash}"]`).forEach(s => {
+                    s.classList.add('highlighted');
+                });
+                
+                // Scroll to highlighted sentences in other panels
+                const panels = document.querySelectorAll('.compare-panel-content');
+                panels.forEach(panel => {
+                    const highlightedInPanel = panel.querySelector(`.compare-sentence[data-sentence-hash="${sentenceHash}"].highlighted`);
+                    if (highlightedInPanel && !panel.contains(this)) {
+                        highlightedInPanel.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                });
+            }
+        });
+    });
+}
+
 function computeSourceDiff(texts, sourceIndex) {
     // For source panel: highlight words that are removed (not present in other texts)
-    const sourceWords = texts[sourceIndex].split(/(\s+)/);
+    // Also wrap sentences for click-to-highlight functionality
+    const sourceText = texts[sourceIndex];
+    const sourceWords = sourceText.split(/(\s+)/);
     
     // Collect all words from other texts
     const otherWordsSets = [];
@@ -1638,31 +1702,43 @@ function computeSourceDiff(texts, sourceIndex) {
         }
     }
     
+    // Split into sentences for click synchronization
+    const sentences = sourceText.split(/(?<=[.!?])\s+/);
     let html = '';
     
-    for (const word of sourceWords) {
-        if (!word.trim()) {
-            // Preserve whitespace
-            html += escapeHtml(word);
-            continue;
-        }
+    for (const sentence of sentences) {
+        if (!sentence.trim()) continue;
         
-        // Check if this word exists in ALL other texts
-        let existsInAll = true;
-        for (const wordSet of otherWordsSets) {
-            if (!wordSet.has(word)) {
-                existsInAll = false;
-                break;
+        // Generate hash from first 3 words for cross-panel sync
+        const sentenceHash = generateSentenceHash(sentence);
+        
+        // Process words in sentence
+        const sentenceWords = sentence.split(/(\s+)/);
+        let sentenceHtml = '';
+        
+        for (const word of sentenceWords) {
+            if (!word.trim()) {
+                sentenceHtml += escapeHtml(word);
+                continue;
+            }
+            
+            // Check if this word exists in ALL other texts
+            let existsInAll = true;
+            for (const wordSet of otherWordsSets) {
+                if (!wordSet.has(word)) {
+                    existsInAll = false;
+                    break;
+                }
+            }
+            
+            if (existsInAll) {
+                sentenceHtml += escapeHtml(word);
+            } else {
+                sentenceHtml += `<span class="diff-removed">${escapeHtml(word)}</span>`;
             }
         }
         
-        if (existsInAll) {
-            // Word exists in all other texts - no highlight
-            html += escapeHtml(word);
-        } else {
-            // Word is missing from at least one other text - highlight as removed
-            html += `<span class="diff-removed">${escapeHtml(word)}</span>`;
-        }
+        html += `<span class="compare-sentence" data-sentence-hash="${sentenceHash}">${sentenceHtml}</span> `;
     }
     
     return html;
@@ -1670,31 +1746,57 @@ function computeSourceDiff(texts, sourceIndex) {
 
 function computeSideBySideDiff(baseText, compareText) {
     // Word-level diff highlighting differences from base
+    // Also wrap sentences for click-to-highlight functionality
     const baseWords = baseText.split(/(\s+)/);
     const compareWords = compareText.split(/(\s+)/);
     const lcs = longestCommonSubsequence(baseWords, compareWords);
 
+    // Split into sentences for click synchronization
+    const sentences = compareText.split(/(?<=[.!?])\s+/);
     let html = '';
-    let ci = 0, lcsIdx = 0;
-
-    while (ci < compareWords.length) {
-        if (lcsIdx < lcs.length && compareWords[ci] === lcs[lcsIdx]) {
-            // Same as base
-            html += escapeHtml(compareWords[ci]);
-            ci++;
-            lcsIdx++;
-        } else {
-            // Different from base - highlight as added
-            if (compareWords[ci].trim()) {
-                html += `<span class="diff-added">${escapeHtml(compareWords[ci])}</span>`;
-            } else {
-                html += escapeHtml(compareWords[ci]);
+    
+    for (const sentence of sentences) {
+        if (!sentence.trim()) continue;
+        
+        // Generate hash from first 3 words for cross-panel sync
+        const sentenceHash = generateSentenceHash(sentence);
+        
+        // Process words in sentence with diff
+        const sentenceWords = sentence.split(/(\s+)/);
+        let sentenceHtml = '';
+        
+        for (const word of sentenceWords) {
+            if (!word.trim()) {
+                sentenceHtml += escapeHtml(word);
+                continue;
             }
-            ci++;
+            
+            // Find this word in LCS
+            let inLcs = false;
+            for (let l = 0; l < lcs.length; l++) {
+                if (lcs[l] === word) {
+                    inLcs = true;
+                    break;
+                }
+            }
+            
+            if (inLcs) {
+                sentenceHtml += escapeHtml(word);
+            } else {
+                sentenceHtml += `<span class="diff-added">${escapeHtml(word)}</span>`;
+            }
         }
+        
+        html += `<span class="compare-sentence" data-sentence-hash="${sentenceHash}">${sentenceHtml}</span> `;
     }
 
     return html;
+}
+
+function generateSentenceHash(sentence) {
+    // Generate a simple hash from first 3 words for cross-panel synchronization
+    const words = sentence.trim().split(/\s+/).slice(0, 3);
+    return words.join('_').toLowerCase().replace(/[^a-z0-9_]/g, '');
 }
 
 function longestCommonSubsequence(arr1, arr2) {
