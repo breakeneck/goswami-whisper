@@ -193,14 +193,30 @@ class TranscribeService:
         print(f"Starting Faster Whisper transcription for: {file_path}")
 
         # Use initial_prompt to guide the model toward Russian transcription
-        initial_prompt = "Харе Кришна. Шрила Прабхупада. Преданное служение. Бхагавад-гита. Шримад-Бхагаватам."
+        # Same prompt as in regular Whisper for consistency
+        initial_prompt = """Харе Кришна. Это устная лекция на русском языке.
+        В речи присутствует большое количество санскритских имён,
+        эпитетов и терминов гаудия-вайшнавской традиции.
+        Присутствуют имена и названия, связанные с Кришной,
+        Радхой, Враджем, преданными, ачарьями, лилами и шастрами.
+        Текст передаётся дословно, без художественной обработки.
+        """
+
+        # Parameters aligned with regular Whisper defaults for similar accuracy
+        # beam_size=1 uses greedy decoding (same as Whisper default)
+        # temperature=0.0 with temperature_increment_on_fallback=0.2 matches Whisper's fallback behavior
+        # compression_ratio_threshold, log_prob_threshold, no_speech_threshold match Whisper defaults
         segments, info = model.transcribe(
             file_path,
-            beam_size=5,
+            beam_size=1,  # Greedy decoding like regular Whisper default
+            temperature=0.0,  # Start with 0, will fallback if needed
             language="ru",
             task="transcribe",
             initial_prompt=initial_prompt,
-            condition_on_previous_text=False
+            condition_on_previous_text=False,
+            compression_ratio_threshold=2.4,  # Default in Whisper
+            log_prob_threshold=-1.0,  # Default in Whisper
+            no_speech_threshold=0.6,  # Default in Whisper
         )
 
         # Collect all segments with progress tracking
