@@ -40,7 +40,7 @@ class TranscribeService:
     """Service for transcribing audio/video files."""
 
     WHISPER_MODELS = ['medium', 'large', 'large-v3']
-    FASTER_WHISPER_MODELS = ['medium', 'large-v2', 'large-v3']
+    FASTER_WHISPER_MODELS = ['medium', 'large-v2', 'large-v3', 'large-v3-turbo']
     QWEN3_ASR_MODELS = [os.environ.get('QWEN3_ASR_MODEL', 'Qwen/Qwen3-ASR-1.7B')]
 
     @staticmethod
