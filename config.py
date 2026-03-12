@@ -58,7 +58,7 @@ class Config:
         },
         'faster-whisper': {
             'name': 'Faster Whisper',
-            'models': ['medium', 'large-v2', 'large-v3']
+            'models': ['medium', 'large-v2', 'large-v3', 'large-v3-turbo']
         },
         'qwen3-asr': {
             'name': 'Qwen3-ASR',
