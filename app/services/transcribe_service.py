@@ -209,6 +209,7 @@ class TranscribeService:
         segments, info = model.transcribe(
             file_path,
             beam_size=1,  # Greedy decoding like regular Whisper default
+            batch_size=32,
             temperature=0.0,  # Start with 0, will fallback if needed
             language="ru",
             task="transcribe",
