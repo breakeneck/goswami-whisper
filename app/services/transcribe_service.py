@@ -183,7 +183,7 @@ class TranscribeService:
 
         # Try to use CUDA if available, fallback to CPU
         try:
-            model = WhisperModel(model_name, device="cuda", compute_type="float16")
+            model = WhisperModel(model_name, device="cuda", compute_type="int8")
         except Exception:
             model = WhisperModel(model_name, device="cpu", compute_type="int8")
 
