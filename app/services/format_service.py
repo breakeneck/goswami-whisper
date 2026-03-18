@@ -622,6 +622,17 @@ class FormatService:
             return response.choices[0].message.content
 
     @staticmethod
+    def _strip_think_tags(text: str) -> str:
+        """Remove  and  tags from LLM response."""
+        import re
+        # Remove  tags (DeepSeek R1 style thinking)
+        text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
+        # Remove any remaining  tags
+        text = re.sub(r'</think>', '', text)
+        text = re.sub(r'<think>', '', text)
+        return text.strip()
+
+    @staticmethod
     def _format_with_lmstudio(raw_text: str, model: str, stream_callback=None, context_length=None) -> str:
         """Format text using LM Studio (OpenAI-compatible API)."""
         client = FormatService.get_lmstudio_client()
@@ -649,7 +660,7 @@ class FormatService:
                     text = chunk.choices[0].delta.content
                     result += text
                     stream_callback(text)
-            return result
+            return FormatService._strip_think_tags(result)
         else:
             response = client.chat.completions.create(
                 model=model,
@@ -660,7 +671,7 @@ class FormatService:
                 temperature=0.3,
                 extra_body=extra_body if extra_body else None
             )
-            return response.choices[0].message.content
+            return FormatService._strip_think_tags(response.choices[0].message.content)
 
     @staticmethod
     def get_lmstudio_models():
