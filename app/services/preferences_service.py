@@ -109,3 +109,66 @@ class PreferencesService:
             config.remove_section(cls.SECTION_PROMPT)
             cls._save_config(config)
 
+    @classmethod
+    def get_prompt_history(cls):
+        """Get prompt history list."""
+        config = cls._load_config()
+        history = []
+        if config.has_section(cls.SECTION_PROMPT):
+            # Read history items (stored as numbered keys)
+            import json
+            history_json = config.get(cls.SECTION_PROMPT, 'history', fallback='[]')
+            try:
+                history = json.loads(history_json)
+            except:
+                history = []
+        return history
+
+    @classmethod
+    def _save_prompt_history(cls, history):
+        """Save prompt history list."""
+        import json
+        config = cls._load_config()
+        if not config.has_section(cls.SECTION_PROMPT):
+            config.add_section(cls.SECTION_PROMPT)
+        config.set(cls.SECTION_PROMPT, 'history', json.dumps(history))
+        cls._save_config(config)
+
+    @classmethod
+    def add_prompt_to_history(cls, prompt: str, name: str = None):
+        """Add current prompt to history before updating."""
+        if not prompt:
+            return
+        import json
+        from datetime import datetime
+        history = cls.get_prompt_history()
+        # Create entry with timestamp
+        entry = {
+            'prompt': prompt,
+            'name': name or f"Prompt {len(history) + 1}",
+            'timestamp': datetime.now().isoformat()
+        }
+        # Add to beginning of list
+        history.insert(0, entry)
+        # Keep only last 20 entries
+        history = history[:20]
+        cls._save_prompt_history(history)
+
+    @classmethod
+    def get_prompt_from_history(cls, index: int):
+        """Get prompt from history by index."""
+        history = cls.get_prompt_history()
+        if 0 <= index < len(history):
+            return history[index]['prompt']
+        return None
+
+    @classmethod
+    def delete_prompt_from_history(cls, index: int):
+        """Delete prompt from history by index."""
+        history = cls.get_prompt_history()
+        if 0 <= index < len(history):
+            history.pop(index)
+            cls._save_prompt_history(history)
+            return True
+        return False
+

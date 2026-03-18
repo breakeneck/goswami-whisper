@@ -602,8 +602,45 @@ def set_system_prompt():
     if not prompt:
         return jsonify({'error': 'Prompt cannot be empty'}), 400
 
+    # Save current prompt to history before updating
+    current_prompt = PreferencesService.get_system_prompt()
+    if current_prompt:
+        PreferencesService.add_prompt_to_history(current_prompt)
+
     PreferencesService.set_system_prompt(prompt)
     return jsonify({'success': True, 'message': 'Prompt saved'})
+
+
+@api_bp.route('/settings/prompt/history', methods=['GET'])
+def get_prompt_history():
+    """Get prompt history list."""
+    history = PreferencesService.get_prompt_history()
+    return jsonify({'history': history})
+
+
+@api_bp.route('/settings/prompt/history/<int:index>', methods=['POST'])
+def select_prompt_from_history(index):
+    """Select a prompt from history and set it as current."""
+    # Save current prompt to history before switching
+    current_prompt = PreferencesService.get_system_prompt()
+    if current_prompt:
+        PreferencesService.add_prompt_to_history(current_prompt)
+
+    prompt = PreferencesService.get_prompt_from_history(index)
+    if prompt is None:
+        return jsonify({'error': 'Invalid history index'}), 404
+
+    PreferencesService.set_system_prompt(prompt)
+    return jsonify({'success': True, 'prompt': prompt})
+
+
+@api_bp.route('/settings/prompt/history/<int:index>', methods=['DELETE'])
+def delete_prompt_from_history(index):
+    """Delete a prompt from history."""
+    success = PreferencesService.delete_prompt_from_history(index)
+    if not success:
+        return jsonify({'error': 'Invalid history index'}), 404
+    return jsonify({'success': True})
 
 
 @api_bp.route('/settings/prompt', methods=['DELETE'])
