@@ -1321,6 +1321,7 @@ async function saveFormatPreferences(provider, model) {
 // Show format progress
 async function showFormatProgress(contentId) {
     showProgress('Formatting...', 'Processing with LLM...');
+    const startTime = Date.now();
 
     const pollInterval = setInterval(async () => {
         try {
@@ -1340,8 +1341,14 @@ async function showFormatProgress(contentId) {
                 // Update progress bar with streaming progress from LLM
                 const progress = status.progress || 0;
                 updateProgressBar(progress);
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+                const elapsedStr = minutes > 0
+                    ? `${minutes}m ${seconds.toString().padStart(2, '0')}s`
+                    : `${seconds}s`;
                 document.getElementById('progressStatus').textContent =
-                    `Formatting with LLM... ${Math.round(progress)}%`;
+                    `Formatting with LLM... ${Math.round(progress)}% (${elapsedStr})`;
             }
         } catch (error) {
             clearInterval(pollInterval);
