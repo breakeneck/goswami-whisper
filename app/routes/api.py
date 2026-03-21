@@ -378,7 +378,7 @@ def start_formatting():
 
 
 def process_formatting_async(app, content_id, raw_text, provider, model, context_length=None):
-    """Process formatting in background thread."""
+    """Process formatting in background thread with progress tracking."""
     with app.app_context():
         content = Content.query.get(content_id)
         if not content:
@@ -386,14 +386,48 @@ def process_formatting_async(app, content_id, raw_text, provider, model, context
 
         try:
             content.status = 'processing'
+            content.progress = 0.0
             db.session.commit()
 
             start_time = time.time()
-            formatted_text = FormatService.format_text(raw_text, provider, model, context_length=context_length)
+
+            # Use streaming for progress tracking (especially important for slow LM Studio)
+            # Estimate expected output length based on input (formatted text is usually ~90-110% of input)
+            input_length = len(raw_text)
+            estimated_output_length = input_length  # conservative estimate
+            received_length = [0]  # mutable container for closure
+            last_progress_update = [0.0]  # throttle DB updates
+
+            def progress_stream_callback(text_chunk):
+                """Stream callback that also tracks progress."""
+                received_length[0] += len(text_chunk)
+                # Estimate progress: cap at 95% until done (LLM might still be generating)
+                if estimated_output_length > 0:
+                    progress = min(95.0, (received_length[0] / estimated_output_length) * 100)
+                else:
+                    progress = 0.0
+
+                # Throttle DB updates to every 2% change
+                if progress - last_progress_update[0] >= 2.0:
+                    last_progress_update[0] = progress
+                    from sqlalchemy import text
+                    with db.engine.connect() as conn:
+                        conn.execute(
+                            text("UPDATE contents SET progress = :progress WHERE id = :id"),
+                            {"progress": progress, "id": content_id}
+                        )
+                        conn.commit()
+
+            formatted_text = FormatService.format_text(
+                raw_text, provider, model,
+                stream_callback=progress_stream_callback,
+                context_length=context_length
+            )
             duration = time.time() - start_time
 
             content.text = formatted_text
             content.status = 'completed'
+            content.progress = 100.0
             content.duration_seconds = duration
             db.session.commit()
 

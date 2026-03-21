@@ -1329,12 +1329,19 @@ async function showFormatProgress(contentId) {
 
             if (status.status === 'completed' || status.status === 'error') {
                 clearInterval(pollInterval);
+                updateProgressBar(100);
                 hideProgress();
                 loadUploads();
 
                 if (status.status === 'error') {
                     alert('Formatting error: ' + (status.error_message || 'Unknown error'));
                 }
+            } else if (status.status === 'processing') {
+                // Update progress bar with streaming progress from LLM
+                const progress = status.progress || 0;
+                updateProgressBar(progress);
+                document.getElementById('progressStatus').textContent =
+                    `Formatting with LLM... ${Math.round(progress)}%`;
             }
         } catch (error) {
             clearInterval(pollInterval);
