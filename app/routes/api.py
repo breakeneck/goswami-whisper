@@ -13,6 +13,7 @@ from app.services.transcribe_service import TranscribeService
 from app.services.format_service import FormatService
 from app.services.embedding_service import EmbeddingService
 from app.services.preferences_service import PreferencesService
+from app.services.goswami_db_service import GoswamiDBService
 
 api_bp = Blueprint('api', __name__)
 
@@ -121,6 +122,115 @@ def delete_upload(upload_id):
     db.session.commit()
 
     return jsonify({'message': 'Upload deleted'}), 200
+
+
+@api_bp.route('/uploads/by-id', methods=['POST'])
+def create_upload_by_id():
+    """Create a new upload from a media ID in the Goswami database.
+
+    Looks up the media record by ID, builds the file path using
+    MEDIA_ROOT_PREFIX/year/month/file_url, and creates an Upload record.
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({'error': 'Request body is required'}), 400
+
+        media_id = data.get('media_id')
+        if not media_id:
+            return jsonify({'error': 'media_id is required'}), 400
+
+        # Look up the media record in the Goswami database
+        record = GoswamiDBService.get_media_by_id(media_id)
+        if not record:
+            return jsonify({'error': f'Media with ID {media_id} not found'}), 404
+
+        if not record.get('file_url'):
+            return jsonify({'error': f'Media {media_id} has no file_url'}), 400
+
+        # Build the file path
+        file_path = GoswamiDBService.build_file_path(record)
+
+        if not os.path.exists(file_path):
+            return jsonify({'error': f'Audio file not found at: {file_path}'}), 404
+
+        # Get audio duration
+        duration = TranscribeService.get_audio_duration(file_path) if file_path else None
+
+        # Create upload record
+        original_filename = os.path.basename(file_path)
+        upload = Upload(
+            filename=original_filename,
+            original_filename=original_filename,
+            file_path=file_path,
+            source_url=f'goswami://media/{media_id}',
+            file_size=os.path.getsize(file_path),
+            duration_seconds=duration
+        )
+        db.session.add(upload)
+        db.session.commit()
+
+        return jsonify(upload.to_dict()), 201
+
+    except ConnectionError as e:
+        return jsonify({'error': str(e)}), 503
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============ Goswami DB Endpoints ============
+
+@api_bp.route('/goswami/media/<int:media_id>', methods=['GET'])
+def get_goswami_media(media_id):
+    """Look up a media record by ID from the Goswami database."""
+    try:
+        record = GoswamiDBService.get_media_by_id(media_id)
+        if not record:
+            return jsonify({'error': f'Media with ID {media_id} not found'}), 404
+
+        # Add computed file path info
+        if record.get('file_url'):
+            record['file_path'] = GoswamiDBService.build_file_path(record)
+            record['file_exists'] = os.path.exists(record['file_path'])
+        else:
+            record['file_path'] = None
+            record['file_exists'] = False
+
+        # Format datetime for JSON
+        if record.get('occurrence_date'):
+            record['occurrence_date'] = record['occurrence_date'].isoformat()
+
+        return jsonify(record)
+
+    except ConnectionError as e:
+        return jsonify({'error': str(e)}), 503
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/goswami/search', methods=['GET'])
+def search_goswami_media():
+    """Search media records in the Goswami database by title or ID."""
+    query = request.args.get('q', '').strip()
+    limit = request.args.get('limit', 20, type=int)
+
+    if not query:
+        return jsonify({'error': 'Search query parameter "q" is required'}), 400
+
+    try:
+        results = GoswamiDBService.search_media(query, limit)
+
+        # Format datetime for JSON
+        for record in results:
+            if record.get('occurrence_date'):
+                record['occurrence_date'] = record['occurrence_date'].isoformat()
+
+        return jsonify(results)
+
+    except ConnectionError as e:
+        return jsonify({'error': str(e)}), 503
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 
 # ============ Transcribe Endpoints ============

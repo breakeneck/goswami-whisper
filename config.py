@@ -96,3 +96,13 @@ class Config:
 
     # ChromaDB
     CHROMA_PERSIST_DIR = os.environ.get('CHROMA_PERSIST_DIR', os.path.join(os.path.dirname(__file__), 'chroma_db'))
+
+    # Goswami external PostgreSQL database (for upload by ID)
+    GOSWAMI_DB_NAME = os.environ.get('GOSWAMI_DB_NAME', 'goswami.ru')
+    GOSWAMI_DB_USER = os.environ.get('GOSWAMI_DB_USER', 'postgres')
+    GOSWAMI_DB_PASSWORD = os.environ.get('GOSWAMI_DB_PASSWORD', 'postgres')
+    GOSWAMI_DB_HOST = os.environ.get('GOSWAMI_DB_HOST', 'localhost')
+    GOSWAMI_DB_PORT = os.environ.get('GOSWAMI_DB_PORT', '5431')
+
+    # Media files root prefix (path to audio files on disk)
+    MEDIA_ROOT_PREFIX = os.environ.get('MEDIA_ROOT_PREFIX', '~/hdd/media/bvgm.su')

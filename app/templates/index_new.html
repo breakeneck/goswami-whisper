@@ -237,6 +237,46 @@
                         <input type="url" class="form-control" name="url" id="urlInput"
                                placeholder="https://youtube.com/watch?v=...">
                     </div>
+
+                    <div class="text-center my-3">
+                        <span class="bg-white px-3 text-muted">OR</span>
+                        <hr class="mt-n3">
+                    </div>
+
+                    <!-- Upload by ID -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">
+                            <i class="bi bi-database me-1"></i>Upload by Media ID
+                        </label>
+                        <div class="input-group">
+                            <input type="number" class="form-control" id="mediaIdInput"
+                                   placeholder="Enter media ID from Goswami database" min="1">
+                            <button class="btn btn-outline-secondary" type="button" id="lookupMediaBtn" title="Look up media info">
+                                <i class="bi bi-search"></i>
+                            </button>
+                        </div>
+                        <div class="form-text">
+                            Look up an audio file from the Goswami database by its ID
+                        </div>
+                        <!-- Media info preview -->
+                        <div id="mediaInfoPreview" class="mt-2" style="display: none;">
+                            <div class="card card-body bg-light border">
+                                <div class="small">
+                                    <strong id="mediaPreviewTitle"></strong>
+                                    <div class="text-muted mt-1">
+                                        <span id="mediaPreviewDate"></span>
+                                        <span class="mx-1">•</span>
+                                        <span id="mediaPreviewLang"></span>
+                                        <span class="mx-1">•</span>
+                                        <span id="mediaPreviewPath"></span>
+                                    </div>
+                                    <div class="mt-1">
+                                        <span id="mediaPreviewStatus" class="badge"></span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                 </form>
             </div>
             <div class="modal-footer">
@@ -765,6 +805,36 @@ function setupEventListeners() {
     // Upload form
     document.getElementById('uploadSubmitBtn').addEventListener('click', handleUpload);
 
+    // Lookup media by ID
+    document.getElementById('lookupMediaBtn').addEventListener('click', lookupMediaById);
+
+    // Media ID input: clear other fields and hide preview on change
+    document.getElementById('mediaIdInput').addEventListener('input', function() {
+        if (this.value.trim()) {
+            document.getElementById('fileInput').value = '';
+            document.getElementById('urlInput').value = '';
+            document.getElementById('mediaInfoPreview').style.display = 'none';
+        }
+    });
+
+    // File input: clear media ID
+    document.getElementById('fileInput').addEventListener('change', function() {
+        if (this.files.length) {
+            document.getElementById('urlInput').value = '';
+            document.getElementById('mediaIdInput').value = '';
+            document.getElementById('mediaInfoPreview').style.display = 'none';
+        }
+    });
+
+    // URL input: clear media ID
+    document.getElementById('urlInput').addEventListener('input', function() {
+        if (this.value.trim()) {
+            document.getElementById('fileInput').value = '';
+            document.getElementById('mediaIdInput').value = '';
+            document.getElementById('mediaInfoPreview').style.display = 'none';
+        }
+    });
+
     // Transcribe form
     document.getElementById('transcribeProvider').addEventListener('change', updateTranscribeModels);
     document.getElementById('transcribeSubmitBtn').addEventListener('click', handleTranscribe);
@@ -951,30 +1021,98 @@ function getModelDescription(provider, model) {
     return descriptions[model] || '';
 }
 
+// Look up media by ID from Goswami database
+async function lookupMediaById() {
+    const mediaIdInput = document.getElementById('mediaIdInput');
+    const mediaId = parseInt(mediaIdInput.value);
+
+    if (!mediaId || mediaId < 1) {
+        alert('Please enter a valid media ID');
+        return;
+    }
+
+    const preview = document.getElementById('mediaInfoPreview');
+    const lookupBtn = document.getElementById('lookupMediaBtn');
+
+    try {
+        lookupBtn.disabled = true;
+        lookupBtn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+
+        const response = await fetch(`/api/goswami/media/${mediaId}`);
+
+        if (!response.ok) {
+            const error = await response.json();
+            throw new Error(error.error || 'Lookup failed');
+        }
+
+        const media = await response.json();
+
+        document.getElementById('mediaPreviewTitle').textContent = media.title || '(no title)';
+        document.getElementById('mediaPreviewDate').textContent = media.occurrence_date ? media.occurrence_date.split('T')[0] : '';
+        document.getElementById('mediaPreviewLang').textContent = media.language || '';
+        document.getElementById('mediaPreviewPath').textContent = media.file_url || '';
+
+        const statusBadge = document.getElementById('mediaPreviewStatus');
+        if (media.file_exists) {
+            statusBadge.textContent = 'File exists';
+            statusBadge.className = 'badge bg-success';
+        } else {
+            statusBadge.textContent = 'File NOT found';
+            statusBadge.className = 'badge bg-danger';
+        }
+
+        if (media.transcribe_status) {
+            statusBadge.textContent += ` • ${media.transcribe_status}`;
+        }
+
+        preview.style.display = 'block';
+
+    } catch (error) {
+        preview.style.display = 'none';
+        alert('Error: ' + error.message);
+    } finally {
+        lookupBtn.disabled = false;
+        lookupBtn.innerHTML = '<i class="bi bi-search"></i>';
+    }
+}
+
 // Handle upload
 async function handleUpload() {
     const fileInput = document.getElementById('fileInput');
     const urlInput = document.getElementById('urlInput');
+    const mediaIdInput = document.getElementById('mediaIdInput');
 
-    if (!fileInput.files[0] && !urlInput.value) {
-        alert('Please select a file or enter a URL');
+    if (!fileInput.files[0] && !urlInput.value && !mediaIdInput.value) {
+        alert('Please select a file, enter a URL, or provide a media ID');
         return;
-    }
-
-    const formData = new FormData();
-    if (fileInput.files[0]) {
-        formData.append('file', fileInput.files[0]);
-    } else {
-        formData.append('url', urlInput.value);
     }
 
     try {
         showProgress('Uploading...', 'Preparing your file...');
 
-        const response = await fetch('/api/uploads', {
-            method: 'POST',
-            body: formData
-        });
+        let response;
+
+        if (mediaIdInput.value) {
+            // Upload by media ID
+            response = await fetch('/api/uploads/by-id', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({media_id: parseInt(mediaIdInput.value)})
+            });
+        } else {
+            // Upload by file or URL
+            const formData = new FormData();
+            if (fileInput.files[0]) {
+                formData.append('file', fileInput.files[0]);
+            } else {
+                formData.append('url', urlInput.value);
+            }
+
+            response = await fetch('/api/uploads', {
+                method: 'POST',
+                body: formData
+            });
+        }
 
         if (!response.ok) {
             const error = await response.json();
@@ -984,6 +1122,7 @@ async function handleUpload() {
         hideProgress();
         bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
         document.getElementById('uploadForm').reset();
+        document.getElementById('mediaInfoPreview').style.display = 'none';
         loadUploads();
 
     } catch (error) {
