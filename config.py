@@ -49,6 +49,7 @@ class Config:
 
     # LM Studio
     LMSTUDIO_BASE_URL = os.environ.get('LMSTUDIO_BASE_URL', 'http://localhost:1234/v1')
+    LMSTUDIO_TIMEOUT = int(os.environ.get('LMSTUDIO_TIMEOUT', '3600'))  # 1 hour default (LM Studio can be very slow)
 
     # Transcription providers and models
     TRANSCRIBE_PROVIDERS = {

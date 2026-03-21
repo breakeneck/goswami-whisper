@@ -88,10 +88,22 @@ class FormatService:
 
     @staticmethod
     def get_lmstudio_client() -> OpenAI:
-        """Get LM Studio client (OpenAI-compatible)."""
+        """Get LM Studio client (OpenAI-compatible) with extended timeout.
+
+        LM Studio can be very slow on large texts (up to 1 hour),
+        so we use a configurable timeout with separate connect/read limits.
+        """
+        import httpx
+        timeout_seconds = current_app.config.get('LMSTUDIO_TIMEOUT', 3600)
         return OpenAI(
             base_url=current_app.config.get('LMSTUDIO_BASE_URL', 'http://localhost:1234/v1'),
-            api_key='not-needed'
+            api_key='not-needed',
+            timeout=httpx.Timeout(
+                connect=30.0,       # 30s to establish connection
+                read=timeout_seconds, # up to 1 hour for slow generation
+                write=300.0,        # 5 min to send large payloads
+                pool=30.0           # 30s to get connection from pool
+            )
         )
 
     @staticmethod
@@ -787,7 +799,7 @@ class FormatService:
             base_url = current_app.config.get('LMSTUDIO_BASE_URL', 'http://localhost:1234/v1')
             # LM Studio uses POST /v1/models/unload to unload models
             # First get all loaded models
-            response = requests.get(f"{base_url}/models")
+            response = requests.get(f"{base_url}/models", timeout=30)
             if response.status_code == 200:
                 data = response.json()
                 for model in data.get('data', []):
