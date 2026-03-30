@@ -908,7 +908,15 @@ function updateFormatModels() {
         modelSelect.innerHTML = models.map(m => {
             const info = modelsInfo.find(i => i.id === m);
             const contextStr = info ? ` (${formatTokenCount(info.context_length)})` : '';
-            return `<option value="${m}" data-context="${info?.context_length || 0}">${m}${contextStr}</option>`;
+            // Add price for Claude models
+            let displayName = m;
+            let priceStr = '';
+            if (provider === 'anthropic' && providersConfig.claude_models?.[m]) {
+                const claudeInfo = providersConfig.claude_models[m];
+                displayName = claudeInfo.name;
+                priceStr = ` (${claudeInfo.price})`;
+            }
+            return `<option value="${m}" data-context="${info?.context_length || 0}">${displayName}${priceStr}${contextStr}</option>`;
         }).join('');
     }
 
