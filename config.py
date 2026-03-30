@@ -55,7 +55,7 @@ class Config:
     TRANSCRIBE_PROVIDERS = {
         'whisper': {
             'name': 'OpenAI Whisper',
-            'models': ['medium', 'large', 'large-v3']
+            'models': ['whisper-1', 'medium', 'large', 'large-v3']
         },
         'faster-whisper': {
             'name': 'Faster Whisper',

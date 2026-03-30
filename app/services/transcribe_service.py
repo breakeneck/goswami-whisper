@@ -9,6 +9,8 @@ import whisper
 import whisper.transcribe
 import yt_dlp
 import tqdm
+from openai import OpenAI
+from app.services.whisper_service import WhisperService
 
 
 class TqdmProgressTracker:
@@ -39,7 +41,7 @@ class TqdmProgressTracker:
 class TranscribeService:
     """Service for transcribing audio/video files."""
 
-    WHISPER_MODELS = ['medium', 'large', 'large-v3']
+    WHISPER_MODELS = ['whisper-1', 'medium', 'large', 'large-v3']
     FASTER_WHISPER_MODELS = ['medium', 'large-v2', 'large-v3', 'large-v3-turbo']
     QWEN3_ASR_MODELS = [os.environ.get('QWEN3_ASR_MODEL', 'Qwen/Qwen3-ASR-1.7B')]
 
@@ -90,10 +92,14 @@ class TranscribeService:
         model_name: str,
         progress_callback: Optional[Callable[[float], None]] = None
     ) -> str:
-        """Transcribe using OpenAI Whisper."""
+        """Transcribe using OpenAI Whisper (local or API)."""
         # Validate model name
         if model_name not in TranscribeService.WHISPER_MODELS:
             model_name = 'medium'
+
+        # Use OpenAI API for whisper-1 model
+        if model_name == 'whisper-1':
+            return TranscribeService._transcribe_with_openai_api(file_path, progress_callback)
 
         # Get audio duration for progress tracking
         duration = TranscribeService.get_audio_duration(file_path)
@@ -157,6 +163,44 @@ class TranscribeService:
 
         print(f"Local Whisper transcription complete")
         return result["text"]
+
+    @staticmethod
+    def _transcribe_with_openai_api(
+        file_path: str,
+        progress_callback: Optional[Callable[[float], None]] = None
+    ) -> str:
+        """Transcribe using OpenAI Whisper API (whisper-1 model online)."""
+        from flask import current_app
+        
+        # Get API key from config
+        api_key = current_app.config.get('OPENAI_API_KEY')
+        if not api_key:
+            raise ValueError("OpenAI API key is not configured")
+        
+        # Compress audio for API (OpenAI has 25MB limit)
+        compressed_file = WhisperService.compress_audio_for_api(file_path, max_size_mb=24)
+        
+        print(f"Starting OpenAI Whisper API transcription for: {file_path}")
+        
+        if progress_callback:
+            progress_callback(10.0)
+        
+        # Create OpenAI client and transcribe
+        client = OpenAI(api_key=api_key)
+        
+        with open(compressed_file, "rb") as audio_file:
+            response = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                language="ru",
+                response_format="text"
+            )
+        
+        if progress_callback:
+            progress_callback(100.0)
+        
+        print(f"OpenAI Whisper API transcription complete")
+        return response
 
     @staticmethod
     def _transcribe_with_faster_whisper(
