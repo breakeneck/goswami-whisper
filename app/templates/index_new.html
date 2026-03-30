@@ -914,7 +914,7 @@ function updateFormatModels() {
             if (provider === 'anthropic' && providersConfig.claude_models?.[m]) {
                 const claudeInfo = providersConfig.claude_models[m];
                 displayName = claudeInfo.name;
-                priceStr = ` (${claudeInfo.price})`;
+                priceStr = ` (${claudeInfo.input}$/${claudeInfo.output}$)`;
             }
             return `<option value="${m}" data-context="${info?.context_length || 0}">${displayName}${priceStr}${contextStr}</option>`;
         }).join('');

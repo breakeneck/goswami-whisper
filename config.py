@@ -76,10 +76,9 @@ class Config:
         'anthropic': {
             'name': 'Anthropic (Claude)',
             'models': [
-                'claude-opus-4-6-20250514', 'claude-opus-4-5-20250514', 'claude-opus-4-1-20250514', 'claude-opus-4-20250514',
-                'claude-sonnet-4-6-20250514', 'claude-sonnet-4-5-20250514', 'claude-sonnet-4-20250514', 'claude-sonnet-3-7-20250514',
-                'claude-haiku-4-5-20250514', 'claude-haiku-3-5-20241022', 'claude-haiku-3-20240307',
-                'claude-opus-3-20241111'
+                'claude-opus-4-6', 'claude-opus-4-5-20251101', 'claude-opus-4-1-20250805', 'claude-opus-4-20250514',
+                'claude-sonnet-4-6', 'claude-sonnet-4-5-20250929', 'claude-sonnet-4-20250514', 'claude-3-7-sonnet-20250219',
+                'claude-haiku-4-5-20251001', 'claude-3-5-haiku-20241022', 'claude-3-haiku-20240307'
             ]
         },
         'gemini': {
@@ -101,20 +100,19 @@ class Config:
     }
 
     # Claude models pricing (per 1M tokens)
-    # Format: 'model_name': {name, price}
+    # Format: 'model_name': {name, input, output}
     CLAUDE_MODELS = {
-        'claude-opus-4-6-20250514': {'name': 'Claude Opus 4.6', 'price': 5.00},
-        'claude-opus-4-5-20250514': {'name': 'Claude Opus 4.5', 'price': 5.00},
-        'claude-opus-4-1-20250514': {'name': 'Claude Opus 4.1', 'price': 15.00},
-        'claude-opus-4-20250514': {'name': 'Claude Opus 4', 'price': 15.00},
-        'claude-sonnet-4-6-20250514': {'name': 'Claude Sonnet 4.6', 'price': 3.00},
-        'claude-sonnet-4-5-20250514': {'name': 'Claude Sonnet 4.5', 'price': 3.00},
-        'claude-sonnet-4-20250514': {'name': 'Claude Sonnet 4', 'price': 3.00},
-        'claude-sonnet-3-7-20250514': {'name': 'Claude Sonnet 3.7 (deprecated)', 'price': 3.00},
-        'claude-haiku-4-5-20250514': {'name': 'Claude Haiku 4.5', 'price': 1.00},
-        'claude-haiku-3-5-20241022': {'name': 'Claude Haiku 3.5', 'price': 0.80},
-        'claude-opus-3-20241111': {'name': 'Claude Opus 3 (deprecated)', 'price': 15.00},
-        'claude-haiku-3-20240307': {'name': 'Claude Haiku 3', 'price': 0.25}
+        'claude-opus-4-6': {'name': 'Claude Opus 4.6', 'input': 5.00, 'output': 10.00},
+        'claude-opus-4-5-20251101': {'name': 'Claude Opus 4.5', 'input': 5.00, 'output': 10.00},
+        'claude-opus-4-1-20250805': {'name': 'Claude Opus 4.1', 'input': 15.00, 'output': 30.00},
+        'claude-opus-4-20250514': {'name': 'Claude Opus 4', 'input': 15.00, 'output': 30.00},
+        'claude-sonnet-4-6': {'name': 'Claude Sonnet 4.6', 'input': 3.00, 'output': 6.00},
+        'claude-sonnet-4-5-20250929': {'name': 'Claude Sonnet 4.5', 'input': 3.00, 'output': 6.00},
+        'claude-sonnet-4-20250514': {'name': 'Claude Sonnet 4', 'input': 3.00, 'output': 6.00},
+        'claude-3-7-sonnet-20250219': {'name': 'Claude Sonnet 3.7 (retired)', 'input': 3.00, 'output': 6.00},
+        'claude-haiku-4-5-20251001': {'name': 'Claude Haiku 4.5', 'input': 1.00, 'output': 2.00},
+        'claude-3-5-haiku-20241022': {'name': 'Claude Haiku 3.5 (retired)', 'input': 0.80, 'output': 1.60},
+        'claude-3-haiku-20240307': {'name': 'Claude Haiku 3', 'input': 0.25, 'output': 0.50}
     }
 
     # ChromaDB
