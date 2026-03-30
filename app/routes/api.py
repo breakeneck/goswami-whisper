@@ -594,7 +594,8 @@ def get_providers():
     """Get available providers and models."""
     config = {
         'transcribe': current_app.config.get('TRANSCRIBE_PROVIDERS', {}),
-        'format': current_app.config.get('FORMAT_PROVIDERS', {})
+        'format': current_app.config.get('FORMAT_PROVIDERS', {}),
+        'claude_models': current_app.config.get('CLAUDE_MODELS', {})
     }
 
     # Try to get LM Studio models with info dynamically

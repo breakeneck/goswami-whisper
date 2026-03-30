@@ -75,7 +75,12 @@ class Config:
         },
         'anthropic': {
             'name': 'Anthropic (Claude)',
-            'models': ['claude-sonnet-4-20250514', 'claude-3-5-sonnet-20241022', 'claude-3-haiku-20240307']
+            'models': [
+                'claude-opus-4-6-20250514', 'claude-opus-4-5-20250514', 'claude-opus-4-1-20250514', 'claude-opus-4-20250514',
+                'claude-sonnet-4-6-20250514', 'claude-sonnet-4-5-20250514', 'claude-sonnet-4-20250514', 'claude-sonnet-3-7-20250514',
+                'claude-haiku-4-5-20250514', 'claude-haiku-3-5-20241022', 'claude-haiku-3-20240307',
+                'claude-opus-3-20241111'
+            ]
         },
         'gemini': {
             'name': 'Google Gemini',
@@ -93,6 +98,23 @@ class Config:
             'name': 'LM Studio (Local)',
             'models': []  # Will be loaded dynamically
         }
+    }
+
+    # Claude models pricing (per 1M tokens)
+    # Format: 'model_name': {name, price}
+    CLAUDE_MODELS = {
+        'claude-opus-4-6-20250514': {'name': 'Claude Opus 4.6', 'price': 5.00},
+        'claude-opus-4-5-20250514': {'name': 'Claude Opus 4.5', 'price': 5.00},
+        'claude-opus-4-1-20250514': {'name': 'Claude Opus 4.1', 'price': 15.00},
+        'claude-opus-4-20250514': {'name': 'Claude Opus 4', 'price': 15.00},
+        'claude-sonnet-4-6-20250514': {'name': 'Claude Sonnet 4.6', 'price': 3.00},
+        'claude-sonnet-4-5-20250514': {'name': 'Claude Sonnet 4.5', 'price': 3.00},
+        'claude-sonnet-4-20250514': {'name': 'Claude Sonnet 4', 'price': 3.00},
+        'claude-sonnet-3-7-20250514': {'name': 'Claude Sonnet 3.7 (deprecated)', 'price': 3.00},
+        'claude-haiku-4-5-20250514': {'name': 'Claude Haiku 4.5', 'price': 1.00},
+        'claude-haiku-3-5-20241022': {'name': 'Claude Haiku 3.5', 'price': 0.80},
+        'claude-opus-3-20241111': {'name': 'Claude Opus 3 (deprecated)', 'price': 15.00},
+        'claude-haiku-3-20240307': {'name': 'Claude Haiku 3', 'price': 0.25}
     }
 
     # ChromaDB
