@@ -830,8 +830,8 @@ class FormatService:
         if context_length:
             extra_body['num_ctx'] = context_length
 
-        # Ollama uses the model name directly, not with /v1 prefix
-        model_name = model.split('/')[-1] if '/' in model else model
+        # For community models like FieldMouse-AI/qwen3.5:27b-instruct, use the full model name
+        model_name = model
 
         if stream_callback:
             response = client.chat.completions.create(
