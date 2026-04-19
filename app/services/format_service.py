@@ -1005,16 +1005,13 @@ class FormatService:
     def _get_ollama_models_with_info():
         """Get available models from Ollama with additional info."""
         try:
-            base_url = current_app.config.get('OLLAMA_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '')
-            response = requests.get(f"{base_url}/api/tags", timeout=10)
+            base_url = current_app.config.get('OLLAMA_BASE_URL', 'http://localhost:11434/v1')
+            response = requests.get(f"{base_url}/models", timeout=10)
             if response.status_code == 200:
                 data = response.json()
                 models_info = []
-                for model in data.get('models', []):
-                    model_id = model.get('name', '')
-                    # Remove :latest suffix if present
-                    if ':' in model_id:
-                        model_id = model_id.split(':')[0]
+                for model in data.get('data', []):
+                    model_id = model.get('id', '')
                     
                     model_info = {
                         'id': model_id,
