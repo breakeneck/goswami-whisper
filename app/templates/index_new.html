@@ -343,6 +343,9 @@
                         <option value="xai">xAI (Grok)</option>
                         <option value="zhipu">Zhipu AI (智谱)</option>
                         <option value="lmstudio">LM Studio (Local)</option>
+                        <option value="ollama">Ollama (Local)</option>
+                        <option value="vllm">vLLM (Local)</option>
+                        <option value="llama">Llama.cpp (Local)</option>
                     </select>
                 </div>
                 <div class="mb-3">
@@ -902,8 +905,8 @@ function updateFormatModels() {
     const models = providersConfig.format?.[provider]?.models || [];
     const modelsInfo = providersConfig.format?.[provider]?.models_info || [];
 
-    if (models.length === 0 && provider === 'lmstudio') {
-        modelSelect.innerHTML = '<option value="">No models available - Start LM Studio</option>';
+    if (models.length === 0 && ['lmstudio', 'ollama', 'vllm', 'llama'].includes(provider)) {
+        modelSelect.innerHTML = '<option value="">Loading models...</option>';
     } else {
         modelSelect.innerHTML = models.map(m => {
             const info = modelsInfo.find(i => i.id === m);
@@ -927,11 +930,11 @@ function updateFormatModels() {
         modelSelect.value = savedModel;
     }
 
-    // Show/hide context window selector for LM Studio
-    if (provider === 'lmstudio') {
+    // Show/hide context window selector for all local providers
+    if (['lmstudio', 'ollama', 'vllm', 'llama'].includes(provider)) {
         contextWindowGroup.style.display = 'block';
-        // Restore last selected context window size
-        const savedContextWindow = localStorage.getItem('lmstudio_context_window');
+        // Restore last selected context window size for this provider
+        const savedContextWindow = localStorage.getItem(`${provider}_context_window`);
         const slider = document.getElementById('formatContextSlider');
         if (savedContextWindow) {
             slider.value = savedContextWindow;
@@ -1261,19 +1264,19 @@ async function handleFormat() {
     // Build request body
     const requestBody = {transcribe_id: parseInt(transcribeId), provider, model};
 
-    // Add context window for LM Studio and save to localStorage
-    if (provider === 'lmstudio') {
+    // Add context window for all local providers and save to localStorage
+    if (['lmstudio', 'ollama', 'vllm', 'llama'].includes(provider)) {
         const contextWindow = document.getElementById('formatContextSlider').value;
         requestBody.context_length = parseInt(contextWindow);
-        localStorage.setItem('lmstudio_context_window', contextWindow);
+        localStorage.setItem(`${provider}_context_window`, contextWindow);
 
         // Unload all models and load the selected one with context
         try {
             showProgress('Loading Model...', 'Unloading previous models...');
-            await fetch('/api/lmstudio/unload', { method: 'POST' });
+            await fetch(`/api/${provider}/unload`, { method: 'POST' });
 
             document.getElementById('progressStatus').textContent = 'Loading model with ' + formatTokenCount(parseInt(contextWindow)) + ' context...';
-            await fetch('/api/lmstudio/load', {
+            await fetch(`/api/${provider}/load`, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({

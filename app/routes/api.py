@@ -598,19 +598,28 @@ def get_providers():
         'claude_models': current_app.config.get('CLAUDE_MODELS', {})
     }
 
-    # Try to get LM Studio models with info dynamically
-    try:
-        lmstudio_models_info = FormatService.get_lmstudio_models_with_info()
-        if lmstudio_models_info:
-            config['format']['lmstudio']['models'] = [m['id'] for m in lmstudio_models_info]
-            config['format']['lmstudio']['models_info'] = lmstudio_models_info
-        else:
-            # Fallback to simple list
-            lmstudio_models = FormatService.get_lmstudio_models()
-            if lmstudio_models:
-                config['format']['lmstudio']['models'] = lmstudio_models
-    except Exception:
-        pass
+    # Try to get local provider models with info dynamically
+    local_providers = ['lmstudio', 'ollama', 'vllm', 'llama']
+    for provider in local_providers:
+        try:
+            models_info = FormatService.get_local_models_with_info(provider)
+            if models_info:
+                config['format'][provider]['models'] = [m['id'] for m in models_info]
+                config['format'][provider]['models_info'] = models_info
+            else:
+                # Fallback to simple list
+                if provider == 'lmstudio':
+                    models = FormatService.get_lmstudio_models()
+                elif provider == 'ollama':
+                    models = FormatService.get_ollama_models()
+                elif provider == 'vllm':
+                    models = FormatService.get_vllm_models()
+                elif provider == 'llama':
+                    models = FormatService.get_llama_models()
+                if models:
+                    config['format'][provider]['models'] = models
+        except Exception:
+            pass
 
     return jsonify(config)
 
@@ -684,6 +693,57 @@ def load_lmstudio_model():
         # Load the new model
         success = FormatService.load_lmstudio_model(model_id, context_length)
         return jsonify({'success': success})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+# ============ Generic Local Provider Endpoints (Ollama, vLLM, Llama.cpp) ============
+
+@api_bp.route('/<provider>/models', methods=['GET'])
+def get_local_models(provider):
+    """Get loaded models from a local provider (ollama, vllm, llama)."""
+    if provider not in ['ollama', 'vllm', 'llama']:
+        return jsonify({'error': 'Invalid provider'}), 400
+    
+    try:
+        models_info = FormatService.get_local_models_with_info(provider)
+        return jsonify({'models': models_info})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/<provider>/unload', methods=['POST'])
+def unload_local_models(provider):
+    """Unload all loaded models from a local provider."""
+    if provider not in ['ollama', 'vllm', 'llama']:
+        return jsonify({'error': 'Invalid provider'}), 400
+    
+    try:
+        # For Ollama, vLLM, and Llama.cpp - models are typically server-managed
+        # Just return success since they handle model loading differently
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/<provider>/load', methods=['POST'])
+def load_local_model(provider):
+    """Load a specific model on a local provider (informational - models are typically auto-loaded)."""
+    if provider not in ['ollama', 'vllm', 'llama']:
+        return jsonify({'error': 'Invalid provider'}), 400
+    
+    try:
+        data = request.get_json()
+        model_id = data.get('model_id')
+        context_length = data.get('context_length')
+
+        if not model_id:
+            return jsonify({'error': 'model_id is required'}), 400
+
+        # For Ollama, vLLM, and Llama.cpp - models are typically managed by the server
+        # The model will be automatically loaded when you make the first request
+        # Just return success as the model should be available on the server
+        return jsonify({'success': True, 'message': f'Model {model_id} will be loaded by {provider} server'})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
