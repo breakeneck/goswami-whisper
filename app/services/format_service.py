@@ -123,12 +123,60 @@ class FormatService:
         )
 
     @staticmethod
+    def get_ollama_client() -> OpenAI:
+        """Get Ollama client (OpenAI-compatible API) with extended timeout."""
+        import httpx
+        timeout_seconds = current_app.config.get('OLLAMA_TIMEOUT', 3600)
+        return OpenAI(
+            base_url=current_app.config.get('OLLAMA_BASE_URL', 'http://localhost:11434/v1'),
+            api_key='not-needed',
+            timeout=httpx.Timeout(
+                connect=30.0,
+                read=timeout_seconds,
+                write=300.0,
+                pool=30.0
+            )
+        )
+
+    @staticmethod
+    def get_vllm_client() -> OpenAI:
+        """Get vLLM client (OpenAI-compatible API) with extended timeout."""
+        import httpx
+        timeout_seconds = current_app.config.get('VLLM_TIMEOUT', 3600)
+        return OpenAI(
+            base_url=current_app.config.get('VLLM_BASE_URL', 'http://localhost:8000/v1'),
+            api_key='not-needed',
+            timeout=httpx.Timeout(
+                connect=30.0,
+                read=timeout_seconds,
+                write=300.0,
+                pool=30.0
+            )
+        )
+
+    @staticmethod
+    def get_llama_client() -> OpenAI:
+        """Get Llama.cpp client (OpenAI-compatible API) with extended timeout."""
+        import httpx
+        timeout_seconds = current_app.config.get('LLAMA_TIMEOUT', 3600)
+        return OpenAI(
+            base_url=current_app.config.get('LLAMA_BASE_URL', 'http://localhost:12345/v1'),
+            api_key='not-needed',
+            timeout=httpx.Timeout(
+                connect=30.0,
+                read=timeout_seconds,
+                write=300.0,
+                pool=30.0
+            )
+        )
+
+    @staticmethod
     def get_model_context_length(provider: str, model: str) -> int:
         """
         Fetch the real context length for a model from its API.
 
         Args:
-            provider: Provider name (openai, anthropic, gemini, lmstudio)
+            provider: Provider name (openai, anthropic, gemini, lmstudio, ollama, vllm, llama)
             model: Model identifier
 
         Returns:
@@ -153,6 +201,12 @@ class FormatService:
                 context_length = FormatService._get_zhipu_context_length(model)
             elif provider == 'lmstudio':
                 context_length = FormatService._get_lmstudio_context_length(model)
+            elif provider == 'ollama':
+                context_length = FormatService._get_ollama_context_length(model)
+            elif provider == 'vllm':
+                context_length = FormatService._get_vllm_context_length(model)
+            elif provider == 'llama':
+                context_length = FormatService._get_llama_context_length(model)
         except Exception as e:
             current_app.logger.warning(f"Failed to fetch context length for {provider}:{model}: {e}")
 
@@ -323,6 +377,65 @@ class FormatService:
         return FormatService.infer_context_length_from_model_name(model)
 
     @staticmethod
+    def _get_ollama_context_length(model: str) -> int:
+        """Fetch context length from Ollama API."""
+        try:
+            base_url = current_app.config.get('OLLAMA_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '')
+            response = requests.get(f"{base_url}/api/tags", timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                for model_info in data.get('models', []):
+                    model_id = model_info.get('name', '')
+                    # Ollama may return model names with :latest suffix
+                    if model_id == model or model_id.startswith(model):
+                        # Ollama doesn't provide context length directly in tags
+                        # Use model name inference
+                        pass
+        except Exception:
+            pass
+        # Fall back to inference from model name
+        return FormatService.infer_context_length_from_model_name(model)
+
+    @staticmethod
+    def _get_vllm_context_length(model: str) -> int:
+        """Fetch context length from vLLM API."""
+        try:
+            base_url = current_app.config.get('VLLM_BASE_URL', 'http://localhost:8000/v1').replace('/v1', '')
+            response = requests.get(f"{base_url}/v1/models", timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                for model_info in data.get('data', []):
+                    if model_info.get('id') == model:
+                        # vLLM may include context length in model info
+                        # Check for max_model_len in the object
+                        max_len = model_info.get('max_model_len')
+                        if max_len and max_len > 0:
+                            return max_len
+        except Exception:
+            pass
+        # Fall back to inference from model name
+        return FormatService.infer_context_length_from_model_name(model)
+
+    @staticmethod
+    def _get_llama_context_length(model: str) -> int:
+        """Fetch context length from Llama.cpp API."""
+        try:
+            base_url = current_app.config.get('LLAMA_BASE_URL', 'http://localhost:12345/v1').replace('/v1', '')
+            response = requests.get(f"{base_url}/v1/models", timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                for model_info in data.get('data', []):
+                    if model_info.get('id') == model:
+                        # Check for context length in model info
+                        ctx_len = model_info.get('context_length')
+                        if ctx_len and ctx_len > 0:
+                            return ctx_len
+        except Exception:
+            pass
+        # Fall back to inference from model name
+        return FormatService.infer_context_length_from_model_name(model)
+
+    @staticmethod
     def _get_default_context_length(provider: str, model: str) -> int:
         """Get a safe default context length for a provider."""
         if provider == 'openai':
@@ -336,6 +449,12 @@ class FormatService:
         elif provider == 'zhipu':
             return FormatService._get_zhipu_context_length(model)
         elif provider == 'lmstudio':
+            return FormatService.infer_context_length_from_model_name(model)
+        elif provider == 'ollama':
+            return FormatService.infer_context_length_from_model_name(model)
+        elif provider == 'vllm':
+            return FormatService.infer_context_length_from_model_name(model)
+        elif provider == 'llama':
             return FormatService.infer_context_length_from_model_name(model)
         return 4096  # Conservative default
 
@@ -376,6 +495,15 @@ class FormatService:
         elif provider == 'lmstudio':
             # Local models - be conservative
             return min(16384, context_length // 4)
+        elif provider == 'ollama':
+            # Local models - be conservative
+            return min(16384, context_length // 4)
+        elif provider == 'vllm':
+            # Local models - be conservative
+            return min(16384, context_length // 4)
+        elif provider == 'llama':
+            # Local models - be conservative
+            return min(16384, context_length // 4)
         return 4096
 
     @staticmethod
@@ -385,10 +513,10 @@ class FormatService:
 
         Args:
             raw_text: Raw transcription text
-            provider: Provider name (openai, anthropic, gemini, lmstudio)
+            provider: Provider name (openai, anthropic, gemini, lmstudio, ollama, vllm, llama)
             model: Model name
             stream_callback: Optional callback for streaming responses
-            context_length: Optional context window size (for LM Studio)
+            context_length: Optional context window size (for local models)
 
         Returns:
             Formatted text
@@ -408,6 +536,12 @@ class FormatService:
             return FormatService._format_with_zhipu(raw_text, model, stream_callback)
         elif provider == 'lmstudio':
             return FormatService._format_with_lmstudio(raw_text, model, stream_callback, context_length)
+        elif provider == 'ollama':
+            return FormatService._format_with_ollama(raw_text, model, stream_callback, context_length)
+        elif provider == 'vllm':
+            return FormatService._format_with_vllm(raw_text, model, stream_callback, context_length)
+        elif provider == 'llama':
+            return FormatService._format_with_llama(raw_text, model, stream_callback, context_length)
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
@@ -635,11 +769,11 @@ class FormatService:
 
     @staticmethod
     def _strip_think_tags(text: str) -> str:
-        """Remove  and  tags from LLM response."""
+        """Remove <think> and </think> tags from LLM response."""
         import re
-        # Remove  tags (DeepSeek R1 style thinking)
+        # Remove <think> tags (DeepSeek R1 style thinking)
         text = re.sub(r'<think>.*?</think>', '', text, flags=re.DOTALL)
-        # Remove any remaining  tags
+        # Remove any remaining </think> tags
         text = re.sub(r'</think>', '', text)
         text = re.sub(r'<think>', '', text)
         return text.strip()
@@ -686,12 +820,275 @@ class FormatService:
             return FormatService._strip_think_tags(response.choices[0].message.content)
 
     @staticmethod
+    def _format_with_ollama(raw_text: str, model: str, stream_callback=None, context_length=None) -> str:
+        """Format text using Ollama (OpenAI-compatible API)."""
+        client = FormatService.get_ollama_client()
+        system_prompt = FormatService.get_system_prompt()
+
+        # Build extra params for context length if specified
+        extra_body = {}
+        if context_length:
+            extra_body['num_ctx'] = context_length
+
+        # Ollama uses the model name directly, not with /v1 prefix
+        model_name = model.split('/')[-1] if '/' in model else model
+
+        if stream_callback:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
+                ],
+                temperature=0.3,
+                stream=True,
+                extra_body=extra_body if extra_body else None
+            )
+            result = ""
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    text = chunk.choices[0].delta.content
+                    result += text
+                    stream_callback(text)
+            return FormatService._strip_think_tags(result)
+        else:
+            response = client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
+                ],
+                temperature=0.3,
+                extra_body=extra_body if extra_body else None
+            )
+            return FormatService._strip_think_tags(response.choices[0].message.content)
+
+    @staticmethod
+    def _format_with_vllm(raw_text: str, model: str, stream_callback=None, context_length=None) -> str:
+        """Format text using vLLM (OpenAI-compatible API)."""
+        client = FormatService.get_vllm_client()
+        system_prompt = FormatService.get_system_prompt()
+
+        # Build extra params for context length if specified
+        extra_body = {}
+        if context_length:
+            extra_body['max_model_len'] = context_length
+
+        if stream_callback:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
+                ],
+                temperature=0.3,
+                stream=True,
+                extra_body=extra_body if extra_body else None
+            )
+            result = ""
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    text = chunk.choices[0].delta.content
+                    result += text
+                    stream_callback(text)
+            return FormatService._strip_think_tags(result)
+        else:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
+                ],
+                temperature=0.3,
+                extra_body=extra_body if extra_body else None
+            )
+            return FormatService._strip_think_tags(response.choices[0].message.content)
+
+    @staticmethod
+    def _format_with_llama(raw_text: str, model: str, stream_callback=None, context_length=None) -> str:
+        """Format text using Llama.cpp (OpenAI-compatible API)."""
+        client = FormatService.get_llama_client()
+        system_prompt = FormatService.get_system_prompt()
+
+        # Build extra params for context length if specified
+        extra_body = {}
+        if context_length:
+            extra_body['n_ctx'] = context_length
+
+        if stream_callback:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
+                ],
+                temperature=0.3,
+                stream=True,
+                extra_body=extra_body if extra_body else None
+            )
+            result = ""
+            for chunk in response:
+                if chunk.choices[0].delta.content:
+                    text = chunk.choices[0].delta.content
+                    result += text
+                    stream_callback(text)
+            return FormatService._strip_think_tags(result)
+        else:
+            response = client.chat.completions.create(
+                model=model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
+                ],
+                temperature=0.3,
+                extra_body=extra_body if extra_body else None
+            )
+            return FormatService._strip_think_tags(response.choices[0].message.content)
+
+    @staticmethod
     def get_lmstudio_models():
         """Get available models from LM Studio."""
         try:
             client = FormatService.get_lmstudio_client()
             models = client.models.list()
             return [m.id for m in models.data]
+        except Exception:
+            return []
+
+    @staticmethod
+    def get_ollama_models():
+        """Get available models from Ollama."""
+        try:
+            client = FormatService.get_ollama_client()
+            models = client.models.list()
+            return [m.id for m in models.data]
+        except Exception:
+            return []
+
+    @staticmethod
+    def get_vllm_models():
+        """Get available models from vLLM."""
+        try:
+            client = FormatService.get_vllm_client()
+            models = client.models.list()
+            return [m.id for m in models.data]
+        except Exception:
+            return []
+
+    @staticmethod
+    def get_llama_models():
+        """Get available models from Llama.cpp."""
+        try:
+            client = FormatService.get_llama_client()
+            models = client.models.list()
+            return [m.id for m in models.data]
+        except Exception:
+            return []
+
+    @staticmethod
+    def get_local_models_with_info(provider: str):
+        """Get available models from a local provider with additional info."""
+        try:
+            if provider == 'lmstudio':
+                return FormatService.get_lmstudio_models_with_info()
+            elif provider == 'ollama':
+                return FormatService._get_ollama_models_with_info()
+            elif provider == 'vllm':
+                return FormatService._get_vllm_models_with_info()
+            elif provider == 'llama':
+                return FormatService._get_llama_models_with_info()
+            return []
+        except Exception:
+            return []
+
+    @staticmethod
+    def _get_ollama_models_with_info():
+        """Get available models from Ollama with additional info."""
+        try:
+            base_url = current_app.config.get('OLLAMA_BASE_URL', 'http://localhost:11434/v1').replace('/v1', '')
+            response = requests.get(f"{base_url}/api/tags", timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                models_info = []
+                for model in data.get('models', []):
+                    model_id = model.get('name', '')
+                    # Remove :latest suffix if present
+                    if ':' in model_id:
+                        model_id = model_id.split(':')[0]
+                    
+                    model_info = {
+                        'id': model_id,
+                        'context_length': FormatService.infer_context_length_from_model_name(model_id),
+                        'loaded': True,
+                        'context_source': 'inferred'
+                    }
+                    models_info.append(model_info)
+                return models_info
+            return []
+        except Exception:
+            return []
+
+    @staticmethod
+    def _get_vllm_models_with_info():
+        """Get available models from vLLM with additional info."""
+        try:
+            base_url = current_app.config.get('VLLM_BASE_URL', 'http://localhost:8000/v1')
+            response = requests.get(f"{base_url}/models", timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                models_info = []
+                for model in data.get('data', []):
+                    model_id = model.get('id')
+                    # Check for max_model_len
+                    api_context = model.get('max_model_len', 0)
+                    if api_context and api_context > 0:
+                        context_length = api_context
+                        context_source = 'api'
+                    else:
+                        context_length = FormatService.infer_context_length_from_model_name(model_id)
+                        context_source = 'inferred'
+                    
+                    model_info = {
+                        'id': model_id,
+                        'context_length': context_length,
+                        'loaded': True,
+                        'context_source': context_source
+                    }
+                    models_info.append(model_info)
+                return models_info
+            return []
+        except Exception:
+            return []
+
+    @staticmethod
+    def _get_llama_models_with_info():
+        """Get available models from Llama.cpp with additional info."""
+        try:
+            base_url = current_app.config.get('LLAMA_BASE_URL', 'http://localhost:12345/v1')
+            response = requests.get(f"{base_url}/models", timeout=10)
+            if response.status_code == 200:
+                data = response.json()
+                models_info = []
+                for model in data.get('data', []):
+                    model_id = model.get('id')
+                    # Check for context_length
+                    api_context = model.get('context_length', 0)
+                    if api_context and api_context > 0:
+                        context_length = api_context
+                        context_source = 'api'
+                    else:
+                        context_length = FormatService.infer_context_length_from_model_name(model_id)
+                        context_source = 'inferred'
+                    
+                    model_info = {
+                        'id': model_id,
+                        'context_length': context_length,
+                        'loaded': True,
+                        'context_source': context_source
+                    }
+                    models_info.append(model_info)
+                return models_info
+            return []
         except Exception:
             return []
 
@@ -851,4 +1248,3 @@ class FormatService:
             return []
         except Exception:
             return []
-

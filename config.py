@@ -51,6 +51,18 @@ class Config:
     LMSTUDIO_BASE_URL = os.environ.get('LMSTUDIO_BASE_URL', 'http://localhost:1234/v1')
     LMSTUDIO_TIMEOUT = int(os.environ.get('LMSTUDIO_TIMEOUT', '3600'))  # 1 hour default (LM Studio can be very slow)
 
+    # Ollama (default port 11434)
+    OLLAMA_BASE_URL = os.environ.get('OLLAMA_BASE_URL', 'http://localhost:11434/v1')
+    OLLAMA_TIMEOUT = int(os.environ.get('OLLAMA_TIMEOUT', '3600'))  # 1 hour default
+
+    # vLLM (default port 8000)
+    VLLM_BASE_URL = os.environ.get('VLLM_BASE_URL', 'http://localhost:8000/v1')
+    VLLM_TIMEOUT = int(os.environ.get('VLLM_TIMEOUT', '3600'))  # 1 hour default
+
+    # Llama.cpp / llama-server (default port 12345)
+    LLAMA_BASE_URL = os.environ.get('LLAMA_BASE_URL', 'http://localhost:12345/v1')
+    LLAMA_TIMEOUT = int(os.environ.get('LLAMA_TIMEOUT', '3600'))  # 1 hour default
+
     # Transcription providers and models
     TRANSCRIBE_PROVIDERS = {
         'whisper': {
@@ -95,6 +107,18 @@ class Config:
         },
         'lmstudio': {
             'name': 'LM Studio (Local)',
+            'models': []  # Will be loaded dynamically
+        },
+        'ollama': {
+            'name': 'Ollama (Local)',
+            'models': []  # Will be loaded dynamically
+        },
+        'vllm': {
+            'name': 'vLLM (Local)',
+            'models': []  # Will be loaded dynamically
+        },
+        'llama': {
+            'name': 'Llama.cpp (Local)',
             'models': []  # Will be loaded dynamically
         }
     }
