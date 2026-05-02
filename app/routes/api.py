@@ -349,6 +349,7 @@ def start_formatting():
     provider = data.get('provider', 'anthropic')
     model = data.get('model', 'claude-sonnet-4-20250514')
     context_length = data.get('context_length')  # Optional, for LM Studio
+    llm_params = data.get('llm_params')
 
     transcribe = Transcribe.query.get_or_404(transcribe_id)
 
@@ -369,7 +370,7 @@ def start_formatting():
     app = current_app._get_current_object()
     thread = threading.Thread(
         target=process_formatting_async,
-        args=(app, content.id, transcribe.text, provider, model, context_length)
+        args=(app, content.id, transcribe.text, provider, model, context_length, llm_params)
     )
     thread.daemon = True
     thread.start()
@@ -377,7 +378,7 @@ def start_formatting():
     return jsonify(content.to_dict()), 201
 
 
-def process_formatting_async(app, content_id, raw_text, provider, model, context_length=None):
+def process_formatting_async(app, content_id, raw_text, provider, model, context_length=None, llm_params=None):
     """Process formatting in background thread with progress tracking."""
     with app.app_context():
         content = Content.query.get(content_id)
@@ -421,7 +422,8 @@ def process_formatting_async(app, content_id, raw_text, provider, model, context
             formatted_text = FormatService.format_text(
                 raw_text, provider, model,
                 stream_callback=progress_stream_callback,
-                context_length=context_length
+                context_length=context_length,
+                llm_params=llm_params,
             )
             duration = time.time() - start_time
 
@@ -462,7 +464,8 @@ def format_with_streaming(content_id):
                 transcribe.text,
                 content.provider,
                 content.model,
-                stream_callback=stream_callback
+                stream_callback=stream_callback,
+                llm_params=None,
             )
 
             duration = time.time() - start_time
@@ -648,8 +651,11 @@ def save_format_preferences():
     data = request.get_json()
     provider = data.get('provider')
     model = data.get('model')
+    llm_params = data.get('llm_params')
     if provider and model:
         PreferencesService.set_format_preferences(provider, model)
+        if isinstance(llm_params, dict):
+            PreferencesService.merge_format_sampling_into_store(provider, model, llm_params)
         return jsonify({'success': True})
     return jsonify({'error': 'provider and model are required'}), 400
 

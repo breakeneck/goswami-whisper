@@ -326,7 +326,7 @@
 
 <!-- Format Modal -->
 <div class="modal fade" id="formatModal" tabindex="-1">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg">
         <div class="modal-content">
             <div class="modal-header">
                 <h5 class="modal-title"><i class="bi bi-magic me-2"></i>Format</h5>
@@ -389,6 +389,47 @@
                             <div class="progress-bar" id="contextUsageBar" style="width: 50%;"></div>
                         </div>
                     </div>
+                </div>
+                <div class="border-top pt-3 mt-2">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label fw-bold mb-0">LLM sampling</label>
+                        <small class="text-muted">Stored per provider + model</small>
+                    </div>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label small mb-1" for="formatTemperatureInput">Temperature</label>
+                            <input type="number" class="form-control form-control-sm" id="formatTemperatureInput"
+                                   min="0" max="2" step="0.05" value="0.3">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small mb-1" for="formatToppInput">Top&nbsp;P</label>
+                            <input type="number" class="form-control form-control-sm" id="formatToppInput"
+                                   min="0" max="1" step="0.05" value="1">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small mb-1" for="formatTopkInput">Top&nbsp;K <span class="text-muted">(optional)</span></label>
+                            <input type="number" class="form-control form-control-sm" id="formatTopkInput"
+                                   min="1" max="128" step="1" placeholder="—">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small mb-1" for="formatMaxTokensInput">Max tokens <span class="text-muted">(blank = auto)</span></label>
+                            <input type="number" class="form-control form-control-sm" id="formatMaxTokensInput"
+                                   min="64" step="256" placeholder="Auto">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small mb-1" for="formatFreqPenaltyInput">Frequency penalty</label>
+                            <input type="number" class="form-control form-control-sm" id="formatFreqPenaltyInput"
+                                   min="-2" max="2" step="0.1" value="0">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small mb-1" for="formatPresencePenaltyInput">Presence penalty</label>
+                            <input type="number" class="form-control form-control-sm" id="formatPresencePenaltyInput"
+                                   min="-2" max="2" step="0.1" value="0">
+                        </div>
+                    </div>
+                    <small class="text-muted d-block mt-2">
+                        Claude / Gemini ignore OpenAI-specific penalties if unsupported. Sampling is merged with sensible defaults server-side.
+                    </small>
                 </div>
             </div>
             <div class="modal-footer">
@@ -483,7 +524,7 @@
 // Global state
 let providersConfig = {};
 let uploadsData = [];
-let userPreferences = { transcribe: {}, format: {} };
+let userPreferences = { transcribe: {}, format: {}, format_sampling: {} };
 
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
@@ -510,6 +551,7 @@ async function loadPreferences() {
     try {
         const response = await fetch('/api/config/preferences');
         userPreferences = await response.json();
+        userPreferences.format_sampling = userPreferences.format_sampling || {};
     } catch (error) {
         console.error('Error loading preferences:', error);
     }
@@ -844,6 +886,7 @@ function setupEventListeners() {
 
     // Format form
     document.getElementById('formatProvider').addEventListener('change', updateFormatModels);
+    document.getElementById('formatModel').addEventListener('change', onFormatModalModelChange);
     document.getElementById('formatSubmitBtn').addEventListener('click', handleFormat);
 
     // Context window slider
@@ -898,6 +941,87 @@ function updateTranscribeModels() {
     }
 }
 
+function defaultsFormatSampling() {
+    return {
+        temperature: 0.3,
+        top_p: 1,
+        top_k: null,
+        max_tokens: null,
+        frequency_penalty: 0,
+        presence_penalty: 0
+    };
+}
+
+function applyFormatSamplingFromStore() {
+    const provider = document.getElementById('formatProvider').value;
+    const model = document.getElementById('formatModel').value;
+    const base = defaultsFormatSampling();
+    const stored =
+        provider && model && userPreferences.format_sampling?.[provider]?.[model]
+            ? userPreferences.format_sampling[provider][model]
+            : {};
+    const m = {...base, ...stored};
+
+    document.getElementById('formatTemperatureInput').value = m.temperature ?? base.temperature;
+    document.getElementById('formatToppInput').value = m.top_p ?? base.top_p;
+
+    const topK = document.getElementById('formatTopkInput');
+    topK.value = m.top_k != null && m.top_k !== '' ? m.top_k : '';
+
+    const maxTok = document.getElementById('formatMaxTokensInput');
+    maxTok.value =
+        m.max_tokens != null && m.max_tokens !== '' ? String(m.max_tokens) : '';
+
+    document.getElementById('formatFreqPenaltyInput').value =
+        m.frequency_penalty ?? base.frequency_penalty;
+    document.getElementById('formatPresencePenaltyInput').value =
+        m.presence_penalty ?? base.presence_penalty;
+}
+
+function collectFormatLlmParams() {
+    const defs = defaultsFormatSampling();
+    const tkRaw = document.getElementById('formatTopkInput').value.trim();
+    const mtRaw = document.getElementById('formatMaxTokensInput').value.trim();
+
+    let top_k = null;
+    if (tkRaw !== '') {
+        const tk = parseInt(tkRaw, 10);
+        if (Number.isFinite(tk)) top_k = tk;
+    }
+
+    let max_tokens = null;
+    if (mtRaw !== '') {
+        const mt = parseInt(mtRaw, 10);
+        if (Number.isFinite(mt)) max_tokens = mt;
+    }
+
+    let temperature = parseFloat(document.getElementById('formatTemperatureInput').value);
+    let top_p = parseFloat(document.getElementById('formatToppInput').value);
+    let frequency_penalty = parseFloat(document.getElementById('formatFreqPenaltyInput').value);
+    let presence_penalty = parseFloat(document.getElementById('formatPresencePenaltyInput').value);
+    if (!Number.isFinite(temperature)) temperature = defs.temperature;
+    if (!Number.isFinite(top_p)) top_p = defs.top_p;
+    if (!Number.isFinite(frequency_penalty)) frequency_penalty = defs.frequency_penalty;
+    if (!Number.isFinite(presence_penalty)) presence_penalty = defs.presence_penalty;
+
+    return {
+        temperature,
+        top_p,
+        top_k,
+        max_tokens,
+        frequency_penalty,
+        presence_penalty
+    };
+}
+
+function onFormatModalModelChange() {
+    const provider = document.getElementById('formatProvider').value;
+    if (['lmstudio', 'ollama', 'vllm', 'llama'].includes(provider)) {
+        updateModelContextInfo();
+    }
+    applyFormatSamplingFromStore();
+}
+
 function updateFormatModels() {
     const provider = document.getElementById('formatProvider').value;
     const modelSelect = document.getElementById('formatModel');
@@ -941,12 +1065,11 @@ function updateFormatModels() {
         }
         updateContextSliderDisplay();
         updateModelContextInfo();
-
-        // Add change listener for model select
-        modelSelect.onchange = updateModelContextInfo;
     } else {
         contextWindowGroup.style.display = 'none';
     }
+
+    applyFormatSamplingFromStore();
 }
 
 function formatTokenCount(tokens) {
@@ -1258,11 +1381,16 @@ async function handleFormat() {
     const provider = document.getElementById('formatProvider').value;
     const model = document.getElementById('formatModel').value;
 
-    // Save preferences
-    saveFormatPreferences(provider, model);
+    const llmParams = collectFormatLlmParams();
+    await saveFormatPreferences(provider, model, llmParams);
 
     // Build request body
-    const requestBody = {transcribe_id: parseInt(transcribeId), provider, model};
+    const requestBody = {
+        transcribe_id: parseInt(transcribeId),
+        provider,
+        model,
+        llm_params: llmParams
+    };
 
     // Add context window for all local providers and save to localStorage
     if (['lmstudio', 'ollama', 'vllm', 'llama'].includes(provider)) {
@@ -1314,16 +1442,42 @@ async function handleFormat() {
     }
 }
 
+function mergeLocalFormatSampling(provider, model, llmParams) {
+    if (!provider || !model) return;
+    userPreferences.format_sampling = userPreferences.format_sampling || {};
+    const bucket = {...(userPreferences.format_sampling[provider] || {})};
+    bucket[model] = {
+        ...(bucket[model] || {}),
+        ...Object.fromEntries(
+            Object.entries(llmParams).filter(([, v]) => v !== null && v !== undefined)
+        ),
+    };
+    if (Object.prototype.hasOwnProperty.call(llmParams, 'max_tokens') &&
+        llmParams.max_tokens == null) {
+        if (bucket[model]) delete bucket[model].max_tokens;
+    }
+    if (Object.prototype.hasOwnProperty.call(llmParams, 'top_k') &&
+        llmParams.top_k == null) {
+        if (bucket[model]) delete bucket[model].top_k;
+    }
+    userPreferences.format_sampling[provider] = bucket;
+}
+
 // Save format preferences
-async function saveFormatPreferences(provider, model) {
+async function saveFormatPreferences(provider, model, llmParams) {
     try {
+        const body = {
+            provider,
+            model,
+            ...(llmParams ? { llm_params: llmParams } : {}),
+        };
         await fetch('/api/config/preferences/format', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({provider, model})
+            body: JSON.stringify(body)
         });
-        // Update local state
         userPreferences.format = {provider, model};
+        if (llmParams) mergeLocalFormatSampling(provider, model, llmParams);
     } catch (error) {
         console.error('Error saving format preferences:', error);
     }

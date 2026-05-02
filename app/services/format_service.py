@@ -1,5 +1,7 @@
 """Service for formatting transcribed text using various LLM providers."""
 
+from typing import Any, Dict, Optional
+
 from openai import OpenAI
 from anthropic import Anthropic
 from flask import current_app
@@ -11,6 +13,13 @@ _model_context_cache = {}
 
 class FormatService:
     """Service for formatting text using LLM models."""
+
+    DEFAULT_LLM_SAMPLING: Dict[str, Any] = {
+        'temperature': 0.3,
+        'top_p': 1.0,
+        'frequency_penalty': 0.0,
+        'presence_penalty': 0.0,
+    }
 
     SYSTEM_PROMPT = """Ты — технический редактор транскрипций речи, работающий с материалами в традиции гаудия-вайшнавизма.
 
@@ -507,7 +516,50 @@ class FormatService:
         return 4096
 
     @staticmethod
-    def format_text(raw_text: str, provider: str, model: str, stream_callback=None, context_length=None) -> str:
+    def resolve_llm_sampling(
+        provider: str, model: str, override: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """Defaults + preferences per model + optional request override."""
+        from app.services.preferences_service import PreferencesService
+
+        merged = dict(FormatService.DEFAULT_LLM_SAMPLING)
+        merged.update(PreferencesService.get_format_sampling_for_model(provider, model))
+        if override:
+            merged.update(PreferencesService.sanitize_llm_sampling_params(override))
+        return merged
+
+    @staticmethod
+    def effective_max_tokens(
+        provider: str, model: str, sampling: Dict[str, Any], context_length=None,
+    ) -> int:
+        if sampling.get('max_tokens'):
+            return int(sampling['max_tokens'])
+        return FormatService.get_max_output_tokens(provider, model, context_length)
+
+    @staticmethod
+    def _openai_compatible_chat_kwargs(
+        sampling: Dict[str, Any], max_tokens: int,
+    ) -> Dict[str, Any]:
+        kwargs: Dict[str, Any] = {
+            'temperature': float(sampling.get('temperature', 0.3)),
+            'top_p': float(sampling.get('top_p', 1.0)),
+            'max_tokens': max_tokens,
+        }
+        if sampling.get('frequency_penalty') is not None:
+            kwargs['frequency_penalty'] = float(sampling['frequency_penalty'])
+        if sampling.get('presence_penalty') is not None:
+            kwargs['presence_penalty'] = float(sampling['presence_penalty'])
+        return kwargs
+
+    @staticmethod
+    def format_text(
+        raw_text: str,
+        provider: str,
+        model: str,
+        stream_callback=None,
+        context_length=None,
+        llm_params: Optional[Dict[str, Any]] = None,
+    ) -> str:
         """
         Format raw transcription text using the specified provider and model.
 
@@ -517,6 +569,7 @@ class FormatService:
             model: Model name
             stream_callback: Optional callback for streaming responses
             context_length: Optional context window size (for local models)
+            llm_params: Optional sampling overrides merged with prefs (temperature, top_p, etc.)
 
         Returns:
             Formatted text
@@ -524,44 +577,68 @@ class FormatService:
         if not raw_text:
             return ""
 
+        sampling = FormatService.resolve_llm_sampling(provider, model, llm_params)
+
         if provider == 'openai':
-            return FormatService._format_with_openai(raw_text, model, stream_callback)
+            return FormatService._format_with_openai(
+                raw_text, model, stream_callback, sampling,
+            )
         elif provider == 'anthropic':
-            return FormatService._format_with_anthropic(raw_text, model, stream_callback)
+            return FormatService._format_with_anthropic(
+                raw_text, model, stream_callback, sampling,
+            )
         elif provider == 'gemini':
-            return FormatService._format_with_gemini(raw_text, model, stream_callback)
+            return FormatService._format_with_gemini(
+                raw_text, model, stream_callback, sampling, context_length,
+            )
         elif provider == 'xai':
-            return FormatService._format_with_xai(raw_text, model, stream_callback)
+            return FormatService._format_with_xai(
+                raw_text, model, stream_callback, sampling,
+            )
         elif provider == 'zhipu':
-            return FormatService._format_with_zhipu(raw_text, model, stream_callback)
+            return FormatService._format_with_zhipu(
+                raw_text, model, stream_callback, sampling,
+            )
         elif provider == 'lmstudio':
-            return FormatService._format_with_lmstudio(raw_text, model, stream_callback, context_length)
+            return FormatService._format_with_lmstudio(
+                raw_text, model, stream_callback, context_length, sampling,
+            )
         elif provider == 'ollama':
-            return FormatService._format_with_ollama(raw_text, model, stream_callback, context_length)
+            return FormatService._format_with_ollama(
+                raw_text, model, stream_callback, context_length, sampling,
+            )
         elif provider == 'vllm':
-            return FormatService._format_with_vllm(raw_text, model, stream_callback, context_length)
+            return FormatService._format_with_vllm(
+                raw_text, model, stream_callback, context_length, sampling,
+            )
         elif provider == 'llama':
-            return FormatService._format_with_llama(raw_text, model, stream_callback, context_length)
+            return FormatService._format_with_llama(
+                raw_text, model, stream_callback, context_length, sampling,
+            )
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
     @staticmethod
-    def _format_with_openai(raw_text: str, model: str, stream_callback=None) -> str:
+    def _format_with_openai(
+        raw_text: str, model: str, stream_callback=None, sampling=None,
+    ) -> str:
         """Format text using OpenAI GPT."""
+        sampling = sampling or dict(FormatService.DEFAULT_LLM_SAMPLING)
         client = FormatService.get_openai_client()
-        max_tokens = FormatService.get_max_output_tokens('openai', model)
+        max_tokens = FormatService.effective_max_tokens('openai', model, sampling)
         system_prompt = FormatService.get_system_prompt()
+        skw = FormatService._openai_compatible_chat_kwargs(sampling, max_tokens)
+        msgs = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': FormatService.FORMAT_PROMPT + raw_text},
+        ]
 
         if stream_callback:
             response = client.chat.completions.create(
                 model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
-                ],
-                # temperature=0.3,
-                # max_completion_tokens=max_tokens,
-                stream=True
+                messages=msgs,
+                stream=True,
+                **skw,
             )
             result = ""
             for chunk in response:
@@ -571,64 +648,70 @@ class FormatService:
                     stream_callback(text)
             return result
         else:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
-                ],
-                # temperature=0.3,
-                # max_completion_tokens=max_tokens
-            )
+            response = client.chat.completions.create(model=model, messages=msgs, **skw)
             return response.choices[0].message.content
 
     @staticmethod
-    def _format_with_anthropic(raw_text: str, model: str, stream_callback=None) -> str:
+    def _format_with_anthropic(
+        raw_text: str, model: str, stream_callback=None, sampling=None,
+    ) -> str:
         """Format text using Claude (Anthropic)."""
+        sampling = sampling or dict(FormatService.DEFAULT_LLM_SAMPLING)
         client = FormatService.get_anthropic_client()
-        max_tokens = FormatService.get_max_output_tokens('anthropic', model)
+        max_tokens = FormatService.effective_max_tokens('anthropic', model, sampling)
         system_prompt = FormatService.get_system_prompt()
+        anth_kw: Dict[str, Any] = {
+            'model': model,
+            'max_tokens': max_tokens,
+            'messages': [{'role': 'user', 'content': FormatService.FORMAT_PROMPT + raw_text}],
+            'system': system_prompt,
+            'temperature': float(sampling.get('temperature', 0.3)),
+        }
+        if sampling.get('top_p') is not None:
+            anth_kw['top_p'] = float(sampling['top_p'])
 
         if stream_callback:
-            with client.messages.stream(
-                model=model,
-                max_tokens=max_tokens,
-                messages=[{"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}],
-                system=system_prompt
-            ) as stream:
+            with client.messages.stream(**anth_kw) as stream:
                 result = ""
                 for text in stream.text_stream:
                     result += text
                     stream_callback(text)
                 return result
         else:
-            response = client.messages.create(
-                model=model,
-                max_tokens=max_tokens,
-                messages=[{"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}],
-                system=system_prompt
-            )
+            response = client.messages.create(**anth_kw)
             return response.content[0].text
 
     @staticmethod
-    def _format_with_gemini(raw_text: str, model: str, stream_callback=None) -> str:
+    def _format_with_gemini(
+        raw_text: str,
+        model: str,
+        stream_callback=None,
+        sampling=None,
+        context_length=None,
+    ) -> str:
         """Format text using Google Gemini."""
+        sampling = sampling or dict(FormatService.DEFAULT_LLM_SAMPLING)
         api_key = current_app.config.get('GEMINI_API_KEY')
         if not api_key:
             raise ValueError("GEMINI_API_KEY not configured")
 
-        max_tokens = FormatService.get_max_output_tokens('gemini', model)
+        max_tokens = FormatService.effective_max_tokens('gemini', model, sampling, context_length)
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         system_prompt = FormatService.get_system_prompt()
 
+        generation = {
+            'temperature': float(sampling.get('temperature', 0.3)),
+            'topP': float(sampling.get('top_p', 1.0)),
+            'maxOutputTokens': max_tokens,
+        }
+        if sampling.get('top_k'):
+            generation['topK'] = int(sampling['top_k'])
+
         payload = {
-            "contents": [{
-                "parts": [{"text": system_prompt + "\n\n" + FormatService.FORMAT_PROMPT + raw_text}]
+            'contents': [{
+                'parts': [{'text': system_prompt + '\n\n' + FormatService.FORMAT_PROMPT + raw_text}]
             }],
-            "generationConfig": {
-                "temperature": 0.3,
-                "maxOutputTokens": max_tokens
-            }
+            'generationConfig': generation,
         }
 
         if stream_callback:
@@ -686,26 +769,27 @@ class FormatService:
             return data['candidates'][0]['content']['parts'][0]['text']
 
     @staticmethod
-    def _format_with_xai(raw_text: str, model: str, stream_callback=None) -> str:
+    def _format_with_xai(
+        raw_text: str, model: str, stream_callback=None, sampling=None,
+    ) -> str:
         """Format text using xAI (Grok) - OpenAI-compatible API."""
+        sampling = sampling or dict(FormatService.DEFAULT_LLM_SAMPLING)
         api_key = current_app.config.get('XAI_API_KEY')
         if not api_key:
             raise ValueError("XAI_API_KEY not configured")
 
         client = FormatService.get_xai_client()
-        max_tokens = FormatService.get_max_output_tokens('xai', model)
+        max_tokens = FormatService.effective_max_tokens('xai', model, sampling)
         system_prompt = FormatService.get_system_prompt()
+        skw = FormatService._openai_compatible_chat_kwargs(sampling, max_tokens)
+        msgs = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': FormatService.FORMAT_PROMPT + raw_text},
+        ]
 
         if stream_callback:
             response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
-                ],
-                temperature=0.3,
-                max_tokens=max_tokens,
-                stream=True
+                model=model, messages=msgs, stream=True, **skw,
             )
             result = ""
             for chunk in response:
@@ -714,39 +798,31 @@ class FormatService:
                     result += text
                     stream_callback(text)
             return result
-        else:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
-                ],
-                temperature=0.3,
-                max_tokens=max_tokens
-            )
-            return response.choices[0].message.content
+        response = client.chat.completions.create(model=model, messages=msgs, **skw)
+        return response.choices[0].message.content
 
     @staticmethod
-    def _format_with_zhipu(raw_text: str, model: str, stream_callback=None) -> str:
+    def _format_with_zhipu(
+        raw_text: str, model: str, stream_callback=None, sampling=None,
+    ) -> str:
         """Format text using Zhipu AI (智谱AI/BigModel) - OpenAI-compatible API."""
+        sampling = sampling or dict(FormatService.DEFAULT_LLM_SAMPLING)
         api_key = current_app.config.get('ZHIPU_API_KEY')
         if not api_key:
             raise ValueError("ZHIPU_API_KEY not configured")
 
         client = FormatService.get_zhipu_client()
-        max_tokens = FormatService.get_max_output_tokens('zhipu', model)
+        max_tokens = FormatService.effective_max_tokens('zhipu', model, sampling)
         system_prompt = FormatService.get_system_prompt()
+        skw = FormatService._openai_compatible_chat_kwargs(sampling, max_tokens)
+        msgs = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': FormatService.FORMAT_PROMPT + raw_text},
+        ]
 
         if stream_callback:
             response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
-                ],
-                # temperature=0.3,
-                # max_tokens=max_tokens,
-                stream=True
+                model=model, messages=msgs, stream=True, **skw,
             )
             result = ""
             for chunk in response:
@@ -755,17 +831,8 @@ class FormatService:
                     result += text
                     stream_callback(text)
             return result
-        else:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
-                ],
-                # temperature=0.3,
-                # max_tokens=max_tokens
-            )
-            return response.choices[0].message.content
+        response = client.chat.completions.create(model=model, messages=msgs, **skw)
+        return response.choices[0].message.content
 
     @staticmethod
     def _strip_think_tags(text: str) -> str:
@@ -779,26 +846,40 @@ class FormatService:
         return text.strip()
 
     @staticmethod
-    def _format_with_lmstudio(raw_text: str, model: str, stream_callback=None, context_length=None) -> str:
+    def _format_with_lmstudio(
+        raw_text: str,
+        model: str,
+        stream_callback=None,
+        context_length=None,
+        sampling=None,
+    ) -> str:
         """Format text using LM Studio (OpenAI-compatible API)."""
+        sampling = sampling or dict(FormatService.DEFAULT_LLM_SAMPLING)
         client = FormatService.get_lmstudio_client()
         system_prompt = FormatService.get_system_prompt()
+        max_tokens = FormatService.effective_max_tokens(
+            'lmstudio', model, sampling, context_length,
+        )
+        skw = FormatService._openai_compatible_chat_kwargs(sampling, max_tokens)
 
-        # Build extra params for context length if specified
         extra_body = {}
         if context_length:
             extra_body['num_ctx'] = context_length
+        if sampling.get('top_k'):
+            extra_body['top_k'] = int(sampling['top_k'])
+
+        msgs = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': FormatService.FORMAT_PROMPT + raw_text},
+        ]
 
         if stream_callback:
             response = client.chat.completions.create(
                 model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
-                ],
-                temperature=0.3,
+                messages=msgs,
                 stream=True,
-                extra_body=extra_body if extra_body else None
+                extra_body=extra_body if extra_body else None,
+                **skw,
             )
             result = ""
             for chunk in response:
@@ -807,42 +888,51 @@ class FormatService:
                     result += text
                     stream_callback(text)
             return FormatService._strip_think_tags(result)
-        else:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
-                ],
-                temperature=0.3,
-                extra_body=extra_body if extra_body else None
-            )
-            return FormatService._strip_think_tags(response.choices[0].message.content)
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=msgs,
+            extra_body=extra_body if extra_body else None,
+            **skw,
+        )
+        return FormatService._strip_think_tags(response.choices[0].message.content)
 
     @staticmethod
-    def _format_with_ollama(raw_text: str, model: str, stream_callback=None, context_length=None) -> str:
+    def _format_with_ollama(
+        raw_text: str,
+        model: str,
+        stream_callback=None,
+        context_length=None,
+        sampling=None,
+    ) -> str:
         """Format text using Ollama (OpenAI-compatible API)."""
+        sampling = sampling or dict(FormatService.DEFAULT_LLM_SAMPLING)
         client = FormatService.get_ollama_client()
         system_prompt = FormatService.get_system_prompt()
+        max_tokens = FormatService.effective_max_tokens(
+            'ollama', model, sampling, context_length,
+        )
+        skw = FormatService._openai_compatible_chat_kwargs(sampling, max_tokens)
 
-        # Build extra params for context length if specified
         extra_body = {}
         if context_length:
             extra_body['num_ctx'] = context_length
+        if sampling.get('top_k'):
+            extra_body['top_k'] = int(sampling['top_k'])
 
-        # For community models like FieldMouse-AI/qwen3.5:27b-instruct, use the full model name
         model_name = model
+        msgs = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': FormatService.FORMAT_PROMPT + raw_text},
+        ]
 
         if stream_callback:
             response = client.chat.completions.create(
                 model=model_name,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
-                ],
-                temperature=0.3,
+                messages=msgs,
                 stream=True,
-                extra_body=extra_body if extra_body else None
+                extra_body=extra_body if extra_body else None,
+                **skw,
             )
             result = ""
             for chunk in response:
@@ -851,39 +941,48 @@ class FormatService:
                     result += text
                     stream_callback(text)
             return FormatService._strip_think_tags(result)
-        else:
-            response = client.chat.completions.create(
-                model=model_name,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
-                ],
-                temperature=0.3,
-                extra_body=extra_body if extra_body else None
-            )
-            return FormatService._strip_think_tags(response.choices[0].message.content)
+
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=msgs,
+            extra_body=extra_body if extra_body else None,
+            **skw,
+        )
+        return FormatService._strip_think_tags(response.choices[0].message.content)
 
     @staticmethod
-    def _format_with_vllm(raw_text: str, model: str, stream_callback=None, context_length=None) -> str:
+    def _format_with_vllm(
+        raw_text: str,
+        model: str,
+        stream_callback=None,
+        context_length=None,
+        sampling=None,
+    ) -> str:
         """Format text using vLLM (OpenAI-compatible API)."""
+        sampling = sampling or dict(FormatService.DEFAULT_LLM_SAMPLING)
         client = FormatService.get_vllm_client()
         system_prompt = FormatService.get_system_prompt()
+        max_tokens = FormatService.effective_max_tokens(
+            'vllm', model, sampling, context_length,
+        )
+        skw = FormatService._openai_compatible_chat_kwargs(sampling, max_tokens)
 
-        # Build extra params for context length if specified
         extra_body = {}
         if context_length:
             extra_body['max_model_len'] = context_length
 
+        msgs = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': FormatService.FORMAT_PROMPT + raw_text},
+        ]
+
         if stream_callback:
             response = client.chat.completions.create(
                 model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
-                ],
-                temperature=0.3,
+                messages=msgs,
                 stream=True,
-                extra_body=extra_body if extra_body else None
+                extra_body=extra_body if extra_body else None,
+                **skw,
             )
             result = ""
             for chunk in response:
@@ -892,39 +991,50 @@ class FormatService:
                     result += text
                     stream_callback(text)
             return FormatService._strip_think_tags(result)
-        else:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
-                ],
-                temperature=0.3,
-                extra_body=extra_body if extra_body else None
-            )
-            return FormatService._strip_think_tags(response.choices[0].message.content)
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=msgs,
+            extra_body=extra_body if extra_body else None,
+            **skw,
+        )
+        return FormatService._strip_think_tags(response.choices[0].message.content)
 
     @staticmethod
-    def _format_with_llama(raw_text: str, model: str, stream_callback=None, context_length=None) -> str:
+    def _format_with_llama(
+        raw_text: str,
+        model: str,
+        stream_callback=None,
+        context_length=None,
+        sampling=None,
+    ) -> str:
         """Format text using Llama.cpp (OpenAI-compatible API)."""
+        sampling = sampling or dict(FormatService.DEFAULT_LLM_SAMPLING)
         client = FormatService.get_llama_client()
         system_prompt = FormatService.get_system_prompt()
+        max_tokens = FormatService.effective_max_tokens(
+            'llama', model, sampling, context_length,
+        )
+        skw = FormatService._openai_compatible_chat_kwargs(sampling, max_tokens)
 
-        # Build extra params for context length if specified
         extra_body = {}
         if context_length:
             extra_body['n_ctx'] = context_length
+        if sampling.get('top_k'):
+            extra_body['top_k'] = int(sampling['top_k'])
+
+        msgs = [
+            {'role': 'system', 'content': system_prompt},
+            {'role': 'user', 'content': FormatService.FORMAT_PROMPT + raw_text},
+        ]
 
         if stream_callback:
             response = client.chat.completions.create(
                 model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
-                ],
-                temperature=0.3,
+                messages=msgs,
                 stream=True,
-                extra_body=extra_body if extra_body else None
+                extra_body=extra_body if extra_body else None,
+                **skw,
             )
             result = ""
             for chunk in response:
@@ -933,17 +1043,14 @@ class FormatService:
                     result += text
                     stream_callback(text)
             return FormatService._strip_think_tags(result)
-        else:
-            response = client.chat.completions.create(
-                model=model,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
-                ],
-                temperature=0.3,
-                extra_body=extra_body if extra_body else None
-            )
-            return FormatService._strip_think_tags(response.choices[0].message.content)
+
+        response = client.chat.completions.create(
+            model=model,
+            messages=msgs,
+            extra_body=extra_body if extra_body else None,
+            **skw,
+        )
+        return FormatService._strip_think_tags(response.choices[0].message.content)
 
     @staticmethod
     def get_lmstudio_models():
