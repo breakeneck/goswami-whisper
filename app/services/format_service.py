@@ -507,7 +507,33 @@ class FormatService:
         return 4096
 
     @staticmethod
-    def format_text(raw_text: str, provider: str, model: str, stream_callback=None, context_length=None) -> str:
+    def _get_llm_params(llm_params=None):
+        """Get LLM generation parameters with defaults.
+        
+        Args:
+            llm_params: Optional dict with temperature, top_p, presence_penalty, frequency_penalty
+            
+        Returns:
+            Dict with validated LLM parameters
+        """
+        defaults = {
+            "temperature": 0.3,
+            "top_p": 1.0,
+            "presence_penalty": 0.0,
+            "frequency_penalty": 0.0
+        }
+        if not llm_params:
+            return defaults
+        
+        params = dict(defaults)
+        # Only update if values are explicitly provided (not None)
+        for key in defaults:
+            if key in llm_params and llm_params[key] is not None:
+                params[key] = llm_params[key]
+        return params
+
+    @staticmethod
+    def format_text(raw_text: str, provider: str, model: str, stream_callback=None, context_length=None, llm_params=None) -> str:
         """
         Format raw transcription text using the specified provider and model.
 
@@ -517,6 +543,7 @@ class FormatService:
             model: Model name
             stream_callback: Optional callback for streaming responses
             context_length: Optional context window size (for local models)
+            llm_params: Optional dict with temperature, top_p, presence_penalty, frequency_penalty
 
         Returns:
             Formatted text
@@ -525,32 +552,33 @@ class FormatService:
             return ""
 
         if provider == 'openai':
-            return FormatService._format_with_openai(raw_text, model, stream_callback)
+            return FormatService._format_with_openai(raw_text, model, stream_callback, llm_params)
         elif provider == 'anthropic':
-            return FormatService._format_with_anthropic(raw_text, model, stream_callback)
+            return FormatService._format_with_anthropic(raw_text, model, stream_callback, llm_params)
         elif provider == 'gemini':
-            return FormatService._format_with_gemini(raw_text, model, stream_callback)
+            return FormatService._format_with_gemini(raw_text, model, stream_callback, llm_params)
         elif provider == 'xai':
-            return FormatService._format_with_xai(raw_text, model, stream_callback)
+            return FormatService._format_with_xai(raw_text, model, stream_callback, llm_params)
         elif provider == 'zhipu':
-            return FormatService._format_with_zhipu(raw_text, model, stream_callback)
+            return FormatService._format_with_zhipu(raw_text, model, stream_callback, llm_params)
         elif provider == 'lmstudio':
-            return FormatService._format_with_lmstudio(raw_text, model, stream_callback, context_length)
+            return FormatService._format_with_lmstudio(raw_text, model, stream_callback, context_length, llm_params)
         elif provider == 'ollama':
-            return FormatService._format_with_ollama(raw_text, model, stream_callback, context_length)
+            return FormatService._format_with_ollama(raw_text, model, stream_callback, context_length, llm_params)
         elif provider == 'vllm':
-            return FormatService._format_with_vllm(raw_text, model, stream_callback, context_length)
+            return FormatService._format_with_vllm(raw_text, model, stream_callback, context_length, llm_params)
         elif provider == 'llama':
-            return FormatService._format_with_llama(raw_text, model, stream_callback, context_length)
+            return FormatService._format_with_llama(raw_text, model, stream_callback, context_length, llm_params)
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
     @staticmethod
-    def _format_with_openai(raw_text: str, model: str, stream_callback=None) -> str:
+    def _format_with_openai(raw_text: str, model: str, stream_callback=None, llm_params=None) -> str:
         """Format text using OpenAI GPT."""
         client = FormatService.get_openai_client()
         max_tokens = FormatService.get_max_output_tokens('openai', model)
         system_prompt = FormatService.get_system_prompt()
+        params = FormatService._get_llm_params(llm_params)
 
         if stream_callback:
             response = client.chat.completions.create(
@@ -559,7 +587,10 @@ class FormatService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                # temperature=0.3,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
+                presence_penalty=params["presence_penalty"],
+                frequency_penalty=params["frequency_penalty"],
                 # max_completion_tokens=max_tokens,
                 stream=True
             )
@@ -577,22 +608,28 @@ class FormatService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                # temperature=0.3,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
+                presence_penalty=params["presence_penalty"],
+                frequency_penalty=params["frequency_penalty"],
                 # max_completion_tokens=max_tokens
             )
             return response.choices[0].message.content
 
     @staticmethod
-    def _format_with_anthropic(raw_text: str, model: str, stream_callback=None) -> str:
+    def _format_with_anthropic(raw_text: str, model: str, stream_callback=None, llm_params=None) -> str:
         """Format text using Claude (Anthropic)."""
         client = FormatService.get_anthropic_client()
         max_tokens = FormatService.get_max_output_tokens('anthropic', model)
         system_prompt = FormatService.get_system_prompt()
+        params = FormatService._get_llm_params(llm_params)
 
         if stream_callback:
             with client.messages.stream(
                 model=model,
                 max_tokens=max_tokens,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
                 messages=[{"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}],
                 system=system_prompt
             ) as stream:
@@ -605,13 +642,15 @@ class FormatService:
             response = client.messages.create(
                 model=model,
                 max_tokens=max_tokens,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
                 messages=[{"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}],
                 system=system_prompt
             )
             return response.content[0].text
 
     @staticmethod
-    def _format_with_gemini(raw_text: str, model: str, stream_callback=None) -> str:
+    def _format_with_gemini(raw_text: str, model: str, stream_callback=None, llm_params=None) -> str:
         """Format text using Google Gemini."""
         api_key = current_app.config.get('GEMINI_API_KEY')
         if not api_key:
@@ -620,13 +659,15 @@ class FormatService:
         max_tokens = FormatService.get_max_output_tokens('gemini', model)
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
         system_prompt = FormatService.get_system_prompt()
+        params = FormatService._get_llm_params(llm_params)
 
         payload = {
             "contents": [{
                 "parts": [{"text": system_prompt + "\n\n" + FormatService.FORMAT_PROMPT + raw_text}]
             }],
             "generationConfig": {
-                "temperature": 0.3,
+                "temperature": params["temperature"],
+                "topP": params["top_p"],
                 "maxOutputTokens": max_tokens
             }
         }
@@ -686,7 +727,7 @@ class FormatService:
             return data['candidates'][0]['content']['parts'][0]['text']
 
     @staticmethod
-    def _format_with_xai(raw_text: str, model: str, stream_callback=None) -> str:
+    def _format_with_xai(raw_text: str, model: str, stream_callback=None, llm_params=None) -> str:
         """Format text using xAI (Grok) - OpenAI-compatible API."""
         api_key = current_app.config.get('XAI_API_KEY')
         if not api_key:
@@ -695,6 +736,7 @@ class FormatService:
         client = FormatService.get_xai_client()
         max_tokens = FormatService.get_max_output_tokens('xai', model)
         system_prompt = FormatService.get_system_prompt()
+        params = FormatService._get_llm_params(llm_params)
 
         if stream_callback:
             response = client.chat.completions.create(
@@ -703,7 +745,10 @@ class FormatService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                temperature=0.3,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
+                presence_penalty=params["presence_penalty"],
+                frequency_penalty=params["frequency_penalty"],
                 max_tokens=max_tokens,
                 stream=True
             )
@@ -721,13 +766,16 @@ class FormatService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                temperature=0.3,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
+                presence_penalty=params["presence_penalty"],
+                frequency_penalty=params["frequency_penalty"],
                 max_tokens=max_tokens
             )
             return response.choices[0].message.content
 
     @staticmethod
-    def _format_with_zhipu(raw_text: str, model: str, stream_callback=None) -> str:
+    def _format_with_zhipu(raw_text: str, model: str, stream_callback=None, llm_params=None) -> str:
         """Format text using Zhipu AI (智谱AI/BigModel) - OpenAI-compatible API."""
         api_key = current_app.config.get('ZHIPU_API_KEY')
         if not api_key:
@@ -736,6 +784,7 @@ class FormatService:
         client = FormatService.get_zhipu_client()
         max_tokens = FormatService.get_max_output_tokens('zhipu', model)
         system_prompt = FormatService.get_system_prompt()
+        params = FormatService._get_llm_params(llm_params)
 
         if stream_callback:
             response = client.chat.completions.create(
@@ -744,7 +793,8 @@ class FormatService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                # temperature=0.3,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
                 # max_tokens=max_tokens,
                 stream=True
             )
@@ -762,7 +812,8 @@ class FormatService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                # temperature=0.3,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
                 # max_tokens=max_tokens
             )
             return response.choices[0].message.content
@@ -779,10 +830,11 @@ class FormatService:
         return text.strip()
 
     @staticmethod
-    def _format_with_lmstudio(raw_text: str, model: str, stream_callback=None, context_length=None) -> str:
+    def _format_with_lmstudio(raw_text: str, model: str, stream_callback=None, context_length=None, llm_params=None) -> str:
         """Format text using LM Studio (OpenAI-compatible API)."""
         client = FormatService.get_lmstudio_client()
         system_prompt = FormatService.get_system_prompt()
+        params = FormatService._get_llm_params(llm_params)
 
         # Build extra params for context length if specified
         extra_body = {}
@@ -796,7 +848,10 @@ class FormatService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                temperature=0.3,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
+                presence_penalty=params["presence_penalty"],
+                frequency_penalty=params["frequency_penalty"],
                 stream=True,
                 extra_body=extra_body if extra_body else None
             )
@@ -814,16 +869,20 @@ class FormatService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                temperature=0.3,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
+                presence_penalty=params["presence_penalty"],
+                frequency_penalty=params["frequency_penalty"],
                 extra_body=extra_body if extra_body else None
             )
             return FormatService._strip_think_tags(response.choices[0].message.content)
 
     @staticmethod
-    def _format_with_ollama(raw_text: str, model: str, stream_callback=None, context_length=None) -> str:
+    def _format_with_ollama(raw_text: str, model: str, stream_callback=None, context_length=None, llm_params=None) -> str:
         """Format text using Ollama (OpenAI-compatible API)."""
         client = FormatService.get_ollama_client()
         system_prompt = FormatService.get_system_prompt()
+        params = FormatService._get_llm_params(llm_params)
 
         # Build extra params for context length if specified
         extra_body = {}
@@ -840,7 +899,10 @@ class FormatService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                temperature=0.3,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
+                presence_penalty=params["presence_penalty"],
+                frequency_penalty=params["frequency_penalty"],
                 stream=True,
                 extra_body=extra_body if extra_body else None
             )
@@ -858,16 +920,20 @@ class FormatService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                temperature=0.3,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
+                presence_penalty=params["presence_penalty"],
+                frequency_penalty=params["frequency_penalty"],
                 extra_body=extra_body if extra_body else None
             )
             return FormatService._strip_think_tags(response.choices[0].message.content)
 
     @staticmethod
-    def _format_with_vllm(raw_text: str, model: str, stream_callback=None, context_length=None) -> str:
+    def _format_with_vllm(raw_text: str, model: str, stream_callback=None, context_length=None, llm_params=None) -> str:
         """Format text using vLLM (OpenAI-compatible API)."""
         client = FormatService.get_vllm_client()
         system_prompt = FormatService.get_system_prompt()
+        params = FormatService._get_llm_params(llm_params)
 
         # Build extra params for context length if specified
         extra_body = {}
@@ -881,7 +947,10 @@ class FormatService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                temperature=0.3,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
+                presence_penalty=params["presence_penalty"],
+                frequency_penalty=params["frequency_penalty"],
                 stream=True,
                 extra_body=extra_body if extra_body else None
             )
@@ -899,16 +968,20 @@ class FormatService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                temperature=0.3,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
+                presence_penalty=params["presence_penalty"],
+                frequency_penalty=params["frequency_penalty"],
                 extra_body=extra_body if extra_body else None
             )
             return FormatService._strip_think_tags(response.choices[0].message.content)
 
     @staticmethod
-    def _format_with_llama(raw_text: str, model: str, stream_callback=None, context_length=None) -> str:
+    def _format_with_llama(raw_text: str, model: str, stream_callback=None, context_length=None, llm_params=None) -> str:
         """Format text using Llama.cpp (OpenAI-compatible API)."""
         client = FormatService.get_llama_client()
         system_prompt = FormatService.get_system_prompt()
+        params = FormatService._get_llm_params(llm_params)
 
         # Build extra params for context length if specified
         extra_body = {}
@@ -922,7 +995,10 @@ class FormatService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                temperature=0.3,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
+                presence_penalty=params["presence_penalty"],
+                frequency_penalty=params["frequency_penalty"],
                 stream=True,
                 extra_body=extra_body if extra_body else None
             )
@@ -940,7 +1016,10 @@ class FormatService:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": FormatService.FORMAT_PROMPT + raw_text}
                 ],
-                temperature=0.3,
+                temperature=params["temperature"],
+                top_p=params["top_p"],
+                presence_penalty=params["presence_penalty"],
+                frequency_penalty=params["frequency_penalty"],
                 extra_body=extra_body if extra_body else None
             )
             return FormatService._strip_think_tags(response.choices[0].message.content)

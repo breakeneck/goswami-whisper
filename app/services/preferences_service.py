@@ -11,6 +11,7 @@ class PreferencesService:
     SECTION_TRANSCRIBE = 'transcribe'
     SECTION_FORMAT = 'format'
     SECTION_PROMPT = 'prompt'
+    SECTION_LLM_PARAMS = 'llm_params'
 
     @classmethod
     def _get_preferences_path(cls):
@@ -81,8 +82,62 @@ class PreferencesService:
         """Get all preferences."""
         return {
             'transcribe': cls.get_transcribe_preferences(),
-            'format': cls.get_format_preferences()
+            'format': cls.get_format_preferences(),
+            'llm_params': cls.get_llm_params()
         }
+
+    @classmethod
+    def get_llm_params(cls):
+        """Get saved LLM generation parameters (temperature, top_p, presence_penalty, frequency_penalty)."""
+        config = cls._load_config()
+        params = {}
+        if config.has_section(cls.SECTION_LLM_PARAMS):
+            if config.has_option(cls.SECTION_LLM_PARAMS, 'temperature'):
+                params['temperature'] = config.getfloat(cls.SECTION_LLM_PARAMS, 'temperature')
+            if config.has_option(cls.SECTION_LLM_PARAMS, 'top_p'):
+                params['top_p'] = config.getfloat(cls.SECTION_LLM_PARAMS, 'top_p')
+            if config.has_option(cls.SECTION_LLM_PARAMS, 'presence_penalty'):
+                params['presence_penalty'] = config.getfloat(cls.SECTION_LLM_PARAMS, 'presence_penalty')
+            if config.has_option(cls.SECTION_LLM_PARAMS, 'frequency_penalty'):
+                params['frequency_penalty'] = config.getfloat(cls.SECTION_LLM_PARAMS, 'frequency_penalty')
+        return params
+
+    @classmethod
+    def set_llm_params(cls, temperature=None, top_p=None, presence_penalty=None, frequency_penalty=None):
+        """Save LLM generation parameters. Pass None to remove a specific parameter."""
+        config = cls._load_config()
+        if not config.has_section(cls.SECTION_LLM_PARAMS):
+            config.add_section(cls.SECTION_LLM_PARAMS)
+        
+        if temperature is not None:
+            config.set(cls.SECTION_LLM_PARAMS, 'temperature', str(temperature))
+        elif config.has_option(cls.SECTION_LLM_PARAMS, 'temperature'):
+            config.remove_option(cls.SECTION_LLM_PARAMS, 'temperature')
+            
+        if top_p is not None:
+            config.set(cls.SECTION_LLM_PARAMS, 'top_p', str(top_p))
+        elif config.has_option(cls.SECTION_LLM_PARAMS, 'top_p'):
+            config.remove_option(cls.SECTION_LLM_PARAMS, 'top_p')
+            
+        if presence_penalty is not None:
+            config.set(cls.SECTION_LLM_PARAMS, 'presence_penalty', str(presence_penalty))
+        elif config.has_option(cls.SECTION_LLM_PARAMS, 'presence_penalty'):
+            config.remove_option(cls.SECTION_LLM_PARAMS, 'presence_penalty')
+            
+        if frequency_penalty is not None:
+            config.set(cls.SECTION_LLM_PARAMS, 'frequency_penalty', str(frequency_penalty))
+        elif config.has_option(cls.SECTION_LLM_PARAMS, 'frequency_penalty'):
+            config.remove_option(cls.SECTION_LLM_PARAMS, 'frequency_penalty')
+        
+        cls._save_config(config)
+
+    @classmethod
+    def clear_llm_params(cls):
+        """Clear all saved LLM generation parameters (revert to defaults)."""
+        config = cls._load_config()
+        if config.has_section(cls.SECTION_LLM_PARAMS):
+            config.remove_section(cls.SECTION_LLM_PARAMS)
+            cls._save_config(config)
 
     @classmethod
     def get_system_prompt(cls):

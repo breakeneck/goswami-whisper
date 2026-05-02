@@ -350,6 +350,21 @@ def start_formatting():
     model = data.get('model', 'claude-sonnet-4-20250514')
     context_length = data.get('context_length')  # Optional, for LM Studio
 
+    # Extract LLM generation parameters
+    llm_params = None
+    if any(k in data for k in ['temperature', 'top_p', 'presence_penalty', 'frequency_penalty']):
+        llm_params = {
+            'temperature': data.get('temperature'),
+            'top_p': data.get('top_p'),
+            'presence_penalty': data.get('presence_penalty'),
+            'frequency_penalty': data.get('frequency_penalty')
+        }
+    else:
+        # Try to load saved preferences
+        saved_params = PreferencesService.get_llm_params()
+        if saved_params:
+            llm_params = saved_params
+
     transcribe = Transcribe.query.get_or_404(transcribe_id)
 
     if not transcribe.text:
@@ -369,7 +384,7 @@ def start_formatting():
     app = current_app._get_current_object()
     thread = threading.Thread(
         target=process_formatting_async,
-        args=(app, content.id, transcribe.text, provider, model, context_length)
+        args=(app, content.id, transcribe.text, provider, model, context_length, llm_params)
     )
     thread.daemon = True
     thread.start()
@@ -377,7 +392,7 @@ def start_formatting():
     return jsonify(content.to_dict()), 201
 
 
-def process_formatting_async(app, content_id, raw_text, provider, model, context_length=None):
+def process_formatting_async(app, content_id, raw_text, provider, model, context_length=None, llm_params=None):
     """Process formatting in background thread with progress tracking."""
     with app.app_context():
         content = Content.query.get(content_id)
@@ -421,7 +436,8 @@ def process_formatting_async(app, content_id, raw_text, provider, model, context
             formatted_text = FormatService.format_text(
                 raw_text, provider, model,
                 stream_callback=progress_stream_callback,
-                context_length=context_length
+                context_length=context_length,
+                llm_params=llm_params
             )
             duration = time.time() - start_time
 
@@ -440,11 +456,27 @@ def process_formatting_async(app, content_id, raw_text, provider, model, context
 @api_bp.route('/format/<int:content_id>/stream', methods=['POST'])
 def format_with_streaming(content_id):
     """Format content with streaming response."""
+    data = request.get_json(silent=True) or {}
     content = Content.query.get_or_404(content_id)
     transcribe = Transcribe.query.get_or_404(content.transcribe_id)
 
     if not transcribe.text:
         return jsonify({'error': 'Transcription has no text to format'}), 400
+
+    # Extract LLM generation parameters
+    llm_params = None
+    if any(k in data for k in ['temperature', 'top_p', 'presence_penalty', 'frequency_penalty']):
+        llm_params = {
+            'temperature': data.get('temperature'),
+            'top_p': data.get('top_p'),
+            'presence_penalty': data.get('presence_penalty'),
+            'frequency_penalty': data.get('frequency_penalty')
+        }
+    else:
+        # Try to load saved preferences
+        saved_params = PreferencesService.get_llm_params()
+        if saved_params:
+            llm_params = saved_params
 
     content.status = 'processing'
     db.session.commit()
@@ -462,7 +494,8 @@ def format_with_streaming(content_id):
                 transcribe.text,
                 content.provider,
                 content.model,
-                stream_callback=stream_callback
+                stream_callback=stream_callback,
+                llm_params=llm_params
             )
 
             duration = time.time() - start_time
