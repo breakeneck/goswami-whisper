@@ -869,10 +869,13 @@ class FormatService:
         client = FormatService.get_vllm_client()
         system_prompt = FormatService.get_system_prompt()
 
-        # Build extra params for context length if specified
+        # Build extra params
         extra_body = {}
         if context_length:
             extra_body['max_model_len'] = context_length
+        # Disable thinking mode for Qwen3 models (skips <think>...</think> generation entirely,
+        # resulting in faster response times since no chain-of-thought compute is spent)
+        extra_body['enable_thinking'] = False
 
         if stream_callback:
             response = client.chat.completions.create(
