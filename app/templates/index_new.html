@@ -313,6 +313,37 @@
                         <!-- Models will be populated dynamically -->
                     </select>
                 </div>
+                <hr>
+                <div class="mb-3">
+                    <div class="form-check">
+                        <input class="form-check-input" type="checkbox" id="transcribeFormatAfter" checked>
+                        <label class="form-check-label fw-bold" for="transcribeFormatAfter">
+                            <i class="bi bi-magic me-1"></i>Format after transcription
+                        </label>
+                    </div>
+                </div>
+                <div id="formatAfterOptions" style="display: block;">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Formatting Provider</label>
+                        <select class="form-select" id="transcribeFormatProvider">
+                            <option value="anthropic">Anthropic (Claude)</option>
+                            <option value="openai">OpenAI</option>
+                            <option value="gemini">Google Gemini</option>
+                            <option value="xai">xAI (Grok)</option>
+                            <option value="zhipu">Zhipu AI (智谱)</option>
+                            <option value="lmstudio">LM Studio (Local)</option>
+                            <option value="ollama">Ollama (Local)</option>
+                            <option value="vllm">vLLM (Local)</option>
+                            <option value="llama">Llama.cpp (Local)</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Formatting Model</label>
+                        <select class="form-select" id="transcribeFormatModel">
+                            <!-- Models will be populated dynamically -->
+                        </select>
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -353,42 +384,6 @@
                     <select class="form-select" id="formatModel">
                         <!-- Models will be populated dynamically -->
                     </select>
-                </div>
-                <div class="mb-3" id="contextWindowGroup" style="display: none;">
-                    <label class="form-label fw-bold">Context Window Size</label>
-                    <div class="d-flex align-items-center gap-3">
-                        <input type="range" class="form-range flex-grow-1" id="formatContextSlider"
-                               min="2048" max="1048576" step="1024" value="8192">
-                        <span class="badge bg-primary" id="contextWindowDisplay" style="min-width: 80px;">8K</span>
-                    </div>
-                    <div class="d-flex justify-content-between mt-1">
-                        <small class="text-muted">2K</small>
-                        <small class="text-muted" id="sliderMaxLabel">1M</small>
-                    </div>
-                    <div class="mt-2">
-                        <label class="form-label small text-muted mb-1">Quick presets:</label>
-                        <div class="btn-group btn-group-sm w-100" role="group">
-                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="4096">4K</button>
-                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="8192">8K</button>
-                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="16384">16K</button>
-                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="32768">32K</button>
-                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="65536">64K</button>
-                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="131072">128K</button>
-                        </div>
-                    </div>
-                    <div class="mt-2 p-2 bg-light rounded" id="tokenInfoPanel">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span class="small">Model context:</span>
-                            <span class="small fw-bold" id="modelContextDisplay">-</span>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center mt-1">
-                            <span class="small">Selected:</span>
-                            <span class="small fw-bold" id="selectedContextDisplay">8,192 tokens</span>
-                        </div>
-                        <div class="progress mt-2" style="height: 6px;">
-                            <div class="progress-bar" id="contextUsageBar" style="width: 50%;"></div>
-                        </div>
-                    </div>
                 </div>
             </div>
             <div class="modal-footer">
@@ -842,28 +837,18 @@ function setupEventListeners() {
     document.getElementById('transcribeProvider').addEventListener('change', updateTranscribeModels);
     document.getElementById('transcribeSubmitBtn').addEventListener('click', handleTranscribe);
 
+    // Format after transcription checkbox
+    document.getElementById('transcribeFormatAfter').addEventListener('change', function() {
+        const formatOptions = document.getElementById('formatAfterOptions');
+        formatOptions.style.display = this.checked ? 'block' : 'none';
+    });
+
+    // Transcribe format provider change - update format models
+    document.getElementById('transcribeFormatProvider').addEventListener('change', updateTranscribeFormatModels);
+
     // Format form
     document.getElementById('formatProvider').addEventListener('change', updateFormatModels);
     document.getElementById('formatSubmitBtn').addEventListener('click', handleFormat);
-
-    // Context window slider
-    document.getElementById('formatContextSlider').addEventListener('input', updateContextSliderDisplay);
-
-    // Context preset buttons
-    document.querySelectorAll('.context-preset').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const value = parseInt(this.dataset.value);
-            const slider = document.getElementById('formatContextSlider');
-            const maxVal = parseInt(slider.max);
-            if (value <= maxVal) {
-                slider.value = value;
-                updateContextSliderDisplay();
-                // Highlight the selected preset
-                document.querySelectorAll('.context-preset').forEach(b => b.classList.remove('active'));
-                this.classList.add('active');
-            }
-        });
-    });
 
     // Refresh button
     document.getElementById('refreshBtn').addEventListener('click', loadUploads);
@@ -901,7 +886,6 @@ function updateTranscribeModels() {
 function updateFormatModels() {
     const provider = document.getElementById('formatProvider').value;
     const modelSelect = document.getElementById('formatModel');
-    const contextWindowGroup = document.getElementById('contextWindowGroup');
     const models = providersConfig.format?.[provider]?.models || [];
     const modelsInfo = providersConfig.format?.[provider]?.models_info || [];
 
@@ -910,7 +894,6 @@ function updateFormatModels() {
     } else {
         modelSelect.innerHTML = models.map(m => {
             const info = modelsInfo.find(i => i.id === m);
-            const contextStr = info ? ` (${formatTokenCount(info.context_length)})` : '';
             // Add price for Claude models
             let displayName = m;
             let priceStr = '';
@@ -919,7 +902,7 @@ function updateFormatModels() {
                 displayName = claudeInfo.name;
                 priceStr = ` (${claudeInfo.input}$/${claudeInfo.output}$)`;
             }
-            return `<option value="${m}" data-context="${info?.context_length || 0}">${displayName}${priceStr}${contextStr}</option>`;
+            return `<option value="${m}">${displayName}${priceStr}</option>`;
         }).join('');
     }
 
@@ -929,23 +912,36 @@ function updateFormatModels() {
     if (savedProvider === provider && savedModel && models.includes(savedModel)) {
         modelSelect.value = savedModel;
     }
+}
 
-    // Show/hide context window selector for all local providers
-    if (['lmstudio', 'ollama', 'vllm', 'llama'].includes(provider)) {
-        contextWindowGroup.style.display = 'block';
-        // Restore last selected context window size for this provider
-        const savedContextWindow = localStorage.getItem(`${provider}_context_window`);
-        const slider = document.getElementById('formatContextSlider');
-        if (savedContextWindow) {
-            slider.value = savedContextWindow;
-        }
-        updateContextSliderDisplay();
-        updateModelContextInfo();
+// Update format models in transcribe modal (for format-after-transcription)
+function updateTranscribeFormatModels() {
+    const provider = document.getElementById('transcribeFormatProvider').value;
+    const modelSelect = document.getElementById('transcribeFormatModel');
+    const models = providersConfig.format?.[provider]?.models || [];
+    const modelsInfo = providersConfig.format?.[provider]?.models_info || [];
 
-        // Add change listener for model select
-        modelSelect.onchange = updateModelContextInfo;
+    if (models.length === 0 && ['lmstudio', 'ollama', 'vllm', 'llama'].includes(provider)) {
+        modelSelect.innerHTML = '<option value="">Loading models...</option>';
     } else {
-        contextWindowGroup.style.display = 'none';
+        modelSelect.innerHTML = models.map(m => {
+            const info = modelsInfo.find(i => i.id === m);
+            let displayName = m;
+            let priceStr = '';
+            if (provider === 'anthropic' && providersConfig.claude_models?.[m]) {
+                const claudeInfo = providersConfig.claude_models[m];
+                displayName = claudeInfo.name;
+                priceStr = ` (${claudeInfo.input}$/${claudeInfo.output}$)`;
+            }
+            return `<option value="${m}">${displayName}${priceStr}</option>`;
+        }).join('');
+    }
+
+    // Select last used model for this provider if available
+    const savedModel = userPreferences.format?.model;
+    const savedProvider = userPreferences.format?.provider;
+    if (savedProvider === provider && savedModel && models.includes(savedModel)) {
+        modelSelect.value = savedModel;
     }
 }
 
@@ -1152,7 +1148,18 @@ function openTranscribeModal(uploadId) {
         providerSelect.value = userPreferences.transcribe.provider;
     }
 
+    // Apply saved format preference
+    const formatProviderSelect = document.getElementById('transcribeFormatProvider');
+    if (userPreferences.format?.provider) {
+        formatProviderSelect.value = userPreferences.format.provider;
+    }
+
+    // Ensure checkbox is checked by default and show format options
+    document.getElementById('transcribeFormatAfter').checked = true;
+    document.getElementById('formatAfterOptions').style.display = 'block';
+
     updateTranscribeModels();
+    updateTranscribeFormatModels();
     new bootstrap.Modal(document.getElementById('transcribeModal')).show();
 }
 
@@ -1161,15 +1168,30 @@ async function handleTranscribe() {
     const uploadId = document.getElementById('transcribeUploadId').value;
     const provider = document.getElementById('transcribeProvider').value;
     const model = document.getElementById('transcribeModel').value;
+    const formatAfter = document.getElementById('transcribeFormatAfter').checked;
+    const formatProvider = document.getElementById('transcribeFormatProvider').value;
+    const formatModel = document.getElementById('transcribeFormatModel').value;
 
     // Save preferences
     saveTranscribePreferences(provider, model);
+    if (formatAfter) {
+        saveFormatPreferences(formatProvider, formatModel);
+    }
 
     try {
+        const requestBody = {
+            upload_id: parseInt(uploadId),
+            provider,
+            model,
+            format_after: formatAfter,
+            format_provider: formatAfter ? formatProvider : null,
+            format_model: formatAfter ? formatModel : null
+        };
+
         const response = await fetch('/api/transcribe', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({upload_id: parseInt(uploadId), provider, model})
+            body: JSON.stringify(requestBody)
         });
 
         if (!response.ok) {
@@ -1181,7 +1203,7 @@ async function handleTranscribe() {
         bootstrap.Modal.getInstance(document.getElementById('transcribeModal')).hide();
 
         // Show progress modal and poll for status
-        showTranscriptionProgress(result.id);
+        showTranscriptionProgress(result.id, formatAfter);
 
     } catch (error) {
         alert('Error: ' + error.message);
@@ -1204,7 +1226,7 @@ async function saveTranscribePreferences(provider, model) {
 }
 
 // Show transcription progress
-async function showTranscriptionProgress(transcribeId) {
+async function showTranscriptionProgress(transcribeId, formatAfter = false) {
     showProgress('Transcribing...', 'This may take several minutes...');
 
     const pollInterval = setInterval(async () => {
@@ -1218,11 +1240,48 @@ async function showTranscriptionProgress(transcribeId) {
 
             if (status.status === 'completed' || status.status === 'error') {
                 clearInterval(pollInterval);
-                hideProgress();
-                loadUploads();
 
                 if (status.status === 'error') {
+                    hideProgress();
+                    loadUploads();
                     alert('Transcription error: ' + (status.error_message || 'Unknown error'));
+                    return;
+                }
+
+                if (formatAfter && status.format_content_id) {
+                    // Switch to formatting progress
+                    updateProgressBar(0);
+                    document.getElementById('progressModalTitle').textContent = 'Formatting...';
+                    document.getElementById('progressStatus').textContent = 'Processing with LLM...';
+
+                    const formatPollInterval = setInterval(async () => {
+                        try {
+                            const formatResponse = await fetch(`/api/format/${status.format_content_id}/status`);
+                            const formatStatus = await formatResponse.json();
+
+                            if (formatStatus.status === 'completed' || formatStatus.status === 'error') {
+                                clearInterval(formatPollInterval);
+                                updateProgressBar(100);
+                                hideProgress();
+                                loadUploads();
+
+                                if (formatStatus.status === 'error') {
+                                    alert('Formatting error: ' + (formatStatus.error_message || 'Unknown error'));
+                                }
+                            } else if (formatStatus.status === 'processing') {
+                                updateProgressBar(formatStatus.progress || 0);
+                                document.getElementById('progressStatus').textContent =
+                                    `Formatting with LLM... ${Math.round(formatStatus.progress || 0)}%`;
+                            }
+                        } catch (error) {
+                            clearInterval(formatPollInterval);
+                            hideProgress();
+                            alert('Error checking format status: ' + error.message);
+                        }
+                    }, 2000);
+                } else {
+                    hideProgress();
+                    loadUploads();
                 }
             }
         } catch (error) {
@@ -1263,33 +1322,6 @@ async function handleFormat() {
 
     // Build request body
     const requestBody = {transcribe_id: parseInt(transcribeId), provider, model};
-
-    // Add context window for all local providers and save to localStorage
-    if (['lmstudio', 'ollama', 'vllm', 'llama'].includes(provider)) {
-        const contextWindow = document.getElementById('formatContextSlider').value;
-        requestBody.context_length = parseInt(contextWindow);
-        localStorage.setItem(`${provider}_context_window`, contextWindow);
-
-        // Unload all models and load the selected one with context
-        try {
-            showProgress('Loading Model...', 'Unloading previous models...');
-            await fetch(`/api/${provider}/unload`, { method: 'POST' });
-
-            document.getElementById('progressStatus').textContent = 'Loading model with ' + formatTokenCount(parseInt(contextWindow)) + ' context...';
-            await fetch(`/api/${provider}/load`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    model_id: model,
-                    context_length: parseInt(contextWindow)
-                })
-            });
-            hideProgress();
-        } catch (e) {
-            console.warn('Could not reload model:', e);
-            hideProgress();
-        }
-    }
 
     try {
         const response = await fetch('/api/format', {

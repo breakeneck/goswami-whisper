@@ -242,6 +242,9 @@ def start_transcription():
     upload_id = data.get('upload_id')
     provider = data.get('provider', 'whisper')
     model = data.get('model', 'base')
+    format_after = data.get('format_after', False)
+    format_provider = data.get('format_provider')
+    format_model = data.get('format_model')
 
     upload = Upload.query.get_or_404(upload_id)
 
@@ -259,7 +262,8 @@ def start_transcription():
     app = current_app._get_current_object()
     thread = threading.Thread(
         target=process_transcription_async,
-        args=(app, transcribe.id, upload.file_path, provider, model)
+        args=(app, transcribe.id, upload.file_path, provider, model,
+              format_after, format_provider, format_model)
     )
     thread.daemon = True
     thread.start()
@@ -267,7 +271,8 @@ def start_transcription():
     return jsonify(transcribe.to_dict()), 201
 
 
-def process_transcription_async(app, transcribe_id, file_path, provider, model):
+def process_transcription_async(app, transcribe_id, file_path, provider, model,
+                                format_after=False, format_provider=None, format_model=None):
     """Process transcription in background thread."""
     with app.app_context():
         transcribe = Transcribe.query.get(transcribe_id)
@@ -306,6 +311,26 @@ def process_transcription_async(app, transcribe_id, file_path, provider, model):
             transcribe.duration_seconds = duration
             db.session.commit()
 
+            # If format_after is enabled, trigger formatting
+            if format_after and format_provider and format_model:
+                # Create content record
+                content = Content(
+                    transcribe_id=transcribe_id,
+                    provider=format_provider,
+                    model=format_model,
+                    status='pending'
+                )
+                db.session.add(content)
+                db.session.commit()
+
+                # Start async formatting in a new thread
+                format_thread = threading.Thread(
+                    target=process_formatting_async,
+                    args=(app, content.id, text_result, format_provider, format_model, None)
+                )
+                format_thread.daemon = True
+                format_thread.start()
+
         except Exception as e:
             transcribe.status = 'error'
             transcribe.error_message = str(e)
@@ -317,7 +342,13 @@ def get_transcription_status(transcribe_id):
     """Get the status of a transcription."""
     db.session.expire_all()
     transcribe = Transcribe.query.get_or_404(transcribe_id)
-    return jsonify(transcribe.to_dict())
+    result = transcribe.to_dict()
+    # If there's a pending/processing content (from format_after), include its ID
+    if transcribe.contents:
+        latest_content = transcribe.contents[0]
+        if latest_content.status in ('pending', 'processing'):
+            result['format_content_id'] = latest_content.id
+    return jsonify(result)
 
 
 @api_bp.route('/transcribe/<int:transcribe_id>', methods=['DELETE'])
