@@ -63,6 +63,10 @@ class Config:
     LLAMA_BASE_URL = os.environ.get('LLAMA_BASE_URL', 'http://localhost:12345/v1')
     LLAMA_TIMEOUT = int(os.environ.get('LLAMA_TIMEOUT', '3600'))  # 1 hour default
 
+    # NVIDIA Parakeet
+    PARAKEET_HOST = os.environ.get('PARAKEET_HOST', 'http://parakeet-cpu:5092')
+    PARAKEET_GPU_HOST = os.environ.get('PARAKEET_GPU_HOST', 'http://parakeet-gpu:5092')
+
     # Transcription providers and models
     TRANSCRIBE_PROVIDERS = {
         'whisper': {
@@ -76,6 +80,14 @@ class Config:
         'qwen3-asr': {
             'name': 'Qwen3-ASR',
             'models': [QWEN3_ASR_MODEL]
+        },
+        'parakeet': {
+            'name': 'NVIDIA Parakeet',
+            'models': [
+                'parakeet-tdt-0.6b-v3',
+                'istupakov/parakeet-tdt-0.6b-v3-onnx',
+                'grikdotnet/parakeet-tdt-0.6b-fp16'
+            ]
         }
     }
 

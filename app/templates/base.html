@@ -126,33 +126,11 @@
             <div class="collapse navbar-collapse" id="navbarNav">
                 <ul class="navbar-nav me-auto">
                     <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('main.index') }}">
-                            <i class="bi bi-house-fill me-1"></i>Home
-                        </a>
-                    </li>
-                    <li class="nav-item">
-                        <a class="nav-link" href="{{ url_for('upload.upload') }}">
-                            <i class="bi bi-upload me-1"></i>Upload
-                        </a>
-                    </li>
-                    <li class="nav-item">
                         <a class="nav-link" href="#" data-bs-toggle="modal" data-bs-target="#settingsModal">
                             <i class="bi bi-gear me-1"></i>Settings
                         </a>
                     </li>
                 </ul>
-                <!-- Search Form in Navbar -->
-                <form class="d-flex search-container" action="{{ url_for('search.search') }}" method="GET">
-                    <div class="input-group">
-                        <input class="form-control" type="search" name="q"
-                               placeholder="Search transcriptions..."
-                               aria-label="Search"
-                               value="{{ request.args.get('q', '') }}">
-                        <button class="btn btn-light" type="submit">
-                            <i class="bi bi-search"></i>
-                        </button>
-                    </div>
-                </form>
             </div>
         </div>
     </nav>

@@ -1,7 +1,7 @@
 #!/bin/bash
 
-git fetch origin main
-git reset --hard origin/main
+# git fetch origin main
+# git reset --hard origin/main
 
 source ./venv/bin/activate
 

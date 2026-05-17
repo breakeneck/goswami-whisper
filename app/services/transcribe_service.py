@@ -3,6 +3,7 @@
 import os
 import subprocess
 import time
+import threading
 from typing import Optional, Callable
 
 import whisper
@@ -83,6 +84,8 @@ class TranscribeService:
             return TranscribeService._transcribe_with_faster_whisper(file_path, model, progress_callback)
         elif provider == 'qwen3-asr':
             return TranscribeService._transcribe_with_qwen3_asr(file_path, model, progress_callback)
+        elif provider == 'parakeet':
+            return TranscribeService._transcribe_with_parakeet(file_path, model, progress_callback)
         else:
             raise ValueError(f"Unknown provider: {provider}")
 
@@ -160,6 +163,16 @@ class TranscribeService:
 
         if progress_callback:
             progress_callback(100.0)
+
+        # Free GPU memory
+        del model
+        import gc; gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
 
         print(f"Local Whisper transcription complete")
         return result["text"]
@@ -276,6 +289,16 @@ class TranscribeService:
         if progress_callback:
             progress_callback(100.0)
 
+        # Free GPU memory
+        del model
+        import gc; gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+
         print(f"Faster Whisper transcription complete")
         return " ".join(text_parts)
 
@@ -325,10 +348,67 @@ class TranscribeService:
         if progress_callback:
             progress_callback(100.0)
 
+        # Free GPU memory
+        del model
+        import gc; gc.collect()
+        try:
+            import torch
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception:
+            pass
+
         print("Qwen3-ASR transcription complete")
         if results:
             return results[0].text
         return ""
+
+    @staticmethod
+    def _transcribe_with_parakeet(
+        file_path: str,
+        model_name: str,
+        progress_callback=None
+    ) -> str:
+        """Transcribe using NVIDIA Parakeet via its local OpenAI-compatible API."""
+        from flask import current_app
+
+        parakeet_models = [
+            "parakeet-tdt-0.6b-v3",
+            "istupakov/parakeet-tdt-0.6b-v3-onnx",
+            "grikdotnet/parakeet-tdt-0.6b-fp16",
+        ]
+        if model_name not in parakeet_models:
+            model_name = "parakeet-tdt-0.6b-v3"
+
+        # GPU port for fp16 model, CPU port for the rest
+        parakeet_host = current_app.config.get("PARAKEET_HOST", "http://localhost:5092")
+        if model_name == "grikdotnet/parakeet-tdt-0.6b-fp16":
+            parakeet_host = current_app.config.get("PARAKEET_GPU_HOST", "http://localhost:5093")
+
+        # Parakeet is a blocking HTTP call — no progress info available from the API.
+        # We set progress=0 to signal the UI that percentage-based progress is N/A.
+        if progress_callback:
+            progress_callback(0.0)
+
+        print(f"Starting Parakeet transcription ({model_name}) for: {file_path}")
+
+        client = OpenAI(
+            base_url=f"{parakeet_host}/v1",
+            api_key="sk-no-key-required",
+        )
+
+        with open(file_path, "rb") as audio_file:
+            response = client.audio.transcriptions.create(
+                model=model_name,
+                file=audio_file,
+                response_format="text",
+            )
+
+        if progress_callback:
+            progress_callback(100.0)
+
+        print("Parakeet transcription complete")
+        return response
 
     @staticmethod
     def download_from_url(url: str, output_dir: str) -> str:

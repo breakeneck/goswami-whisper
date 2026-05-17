@@ -305,6 +305,7 @@
                         <option value="whisper">OpenAI Whisper</option>
                         <option value="faster-whisper">Faster Whisper</option>
                         <option value="qwen3-asr">Qwen3-ASR</option>
+                        <option value="parakeet">NVIDIA Parakeet</option>
                     </select>
                 </div>
                 <div class="mb-3">
@@ -354,47 +355,117 @@
                         <!-- Models will be populated dynamically -->
                     </select>
                 </div>
-                <div class="mb-3" id="contextWindowGroup" style="display: none;">
-                    <label class="form-label fw-bold">Context Window Size</label>
-                    <div class="d-flex align-items-center gap-3">
-                        <input type="range" class="form-range flex-grow-1" id="formatContextSlider"
-                               min="2048" max="1048576" step="1024" value="8192">
-                        <span class="badge bg-primary" id="contextWindowDisplay" style="min-width: 80px;">8K</span>
-                    </div>
-                    <div class="d-flex justify-content-between mt-1">
-                        <small class="text-muted">2K</small>
-                        <small class="text-muted" id="sliderMaxLabel">1M</small>
-                    </div>
-                    <div class="mt-2">
-                        <label class="form-label small text-muted mb-1">Quick presets:</label>
-                        <div class="btn-group btn-group-sm w-100" role="group">
-                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="4096">4K</button>
-                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="8192">8K</button>
-                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="16384">16K</button>
-                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="32768">32K</button>
-                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="65536">64K</button>
-                            <button type="button" class="btn btn-outline-secondary context-preset" data-value="131072">128K</button>
-                        </div>
-                    </div>
-                    <div class="mt-2 p-2 bg-light rounded" id="tokenInfoPanel">
-                        <div class="d-flex justify-content-between align-items-center">
-                            <span class="small">Model context:</span>
-                            <span class="small fw-bold" id="modelContextDisplay">-</span>
-                        </div>
-                        <div class="d-flex justify-content-between align-items-center mt-1">
-                            <span class="small">Selected:</span>
-                            <span class="small fw-bold" id="selectedContextDisplay">8,192 tokens</span>
-                        </div>
-                        <div class="progress mt-2" style="height: 6px;">
-                            <div class="progress-bar" id="contextUsageBar" style="width: 50%;"></div>
-                        </div>
-                    </div>
-                </div>
+
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="formatSubmitBtn">
                     <i class="bi bi-play-fill me-1"></i>Start Formatting
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+
+<!-- Wizard Modal - single dialog, all-in-one -->
+<div class="modal fade" id="wizardModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-rocket-takeoff me-2"></i>Quick Process Wizard</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+
+                <!-- Step 1: Source -->
+                <div class="mb-4">
+                    <h6 class="fw-bold text-primary"><i class="bi bi-1-circle me-1"></i>Source</h6>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label small">Upload file</label>
+                            <input type="file" class="form-control form-control-sm" id="wizardFileInput" accept="audio/*,.mp4,.webm,.m4a,.ogg,.flac">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">Or URL</label>
+                            <input type="url" class="form-control form-control-sm" id="wizardUrlInput" placeholder="https://...">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small">Or Media ID</label>
+                            <input type="number" class="form-control form-control-sm" id="wizardMediaIdInput" placeholder="e.g. 12345">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Transcribe -->
+                <div class="mb-4">
+                    <h6 class="fw-bold text-success"><i class="bi bi-2-circle me-1"></i>Transcribe</h6>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label small">Provider</label>
+                            <select class="form-select form-select-sm" id="wizardTranscribeProvider">
+                                <option value="faster-whisper">Faster Whisper</option>
+                                <option value="whisper">OpenAI Whisper</option>
+                                <option value="qwen3-asr">Qwen3-ASR</option>
+                                <option value="parakeet">NVIDIA Parakeet</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">Model</label>
+                            <select class="form-select form-select-sm" id="wizardTranscribeModel"></select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 3: Format -->
+                <div class="mb-4">
+                    <h6 class="fw-bold text-warning"><i class="bi bi-3-circle me-1"></i>Format</h6>
+                    <div class="row g-2">
+                        <div class="col-md-6">
+                            <label class="form-label small">Provider</label>
+                            <select class="form-select form-select-sm" id="wizardFormatProvider">
+                                <option value="anthropic">Anthropic (Claude)</option>
+                                <option value="openai">OpenAI</option>
+                                <option value="gemini">Google Gemini</option>
+                                <option value="xai">xAI (Grok)</option>
+                                <option value="zhipu">Zhipu AI</option>
+                                <option value="lmstudio">LM Studio (Local)</option>
+                                <option value="ollama">Ollama (Local)</option>
+                                <option value="vllm">vLLM (Local)</option>
+                                <option value="llama">Llama.cpp (Local)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label small">Model</label>
+                            <select class="form-select form-select-sm" id="wizardFormatModel"></select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Progress area (hidden until running) -->
+                <div id="wizardProgressArea" style="display:none;">
+                    <div class="progress mb-2" style="height:20px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="wizardProgressBar" style="width:0%"></div>
+                    </div>
+                    <p class="small text-muted" id="wizardProgressText">Starting...</p>
+                </div>
+
+                <!-- Result area (hidden until done) -->
+                <div id="wizardResultArea" style="display:none;">
+                    <div class="alert alert-success py-2 mb-2">
+                        <i class="bi bi-check-circle me-1"></i> All done!
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button class="btn btn-sm btn-outline-info" onclick="wizardViewResult()"><i class="bi bi-eye me-1"></i>View</button>
+                        <button class="btn btn-sm btn-outline-success" onclick="wizardIndex()"><i class="bi bi-database me-1"></i>Index</button>
+                    </div>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="wizardRunBtn" onclick="wizardRun()">
+                    <i class="bi bi-play-fill me-1"></i>Run All
                 </button>
             </div>
         </div>
@@ -564,6 +635,9 @@ function renderUploadsTable() {
                 <td>${formatDate(upload.created_at)}</td>
                 <td>
                     <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-warning action-btn" onclick="openWizardModal(${upload.id})" title="Quick Wizard">
+                            <i class="bi bi-rocket-takeoff"></i>
+                        </button>
                         <button class="btn btn-outline-primary action-btn" onclick="openTranscribeModal(${upload.id})" title="Transcribe">
                             <i class="bi bi-soundwave"></i>
                         </button>
@@ -844,6 +918,10 @@ function setupEventListeners() {
 
     // Format form
     document.getElementById('formatProvider').addEventListener('change', updateFormatModels);
+    // Wizard provider change listeners
+    document.getElementById('wizardTranscribeProvider').addEventListener('change', updateWizardTranscribeModels);
+    document.getElementById('wizardFormatProvider').addEventListener('change', updateWizardFormatModels);
+
     document.getElementById('formatSubmitBtn').addEventListener('click', handleFormat);
 
     // Context window slider
@@ -901,7 +979,6 @@ function updateTranscribeModels() {
 function updateFormatModels() {
     const provider = document.getElementById('formatProvider').value;
     const modelSelect = document.getElementById('formatModel');
-    const contextWindowGroup = document.getElementById('contextWindowGroup');
     const models = providersConfig.format?.[provider]?.models || [];
     const modelsInfo = providersConfig.format?.[provider]?.models_info || [];
 
@@ -919,7 +996,7 @@ function updateFormatModels() {
                 displayName = claudeInfo.name;
                 priceStr = ` (${claudeInfo.input}$/${claudeInfo.output}$)`;
             }
-            return `<option value="${m}" data-context="${info?.context_length || 0}">${displayName}${priceStr}${contextStr}</option>`;
+            return `<option value="${m}">${displayName}${priceStr}${contextStr}</option>`;
         }).join('');
     }
 
@@ -928,24 +1005,6 @@ function updateFormatModels() {
     const savedProvider = userPreferences.format?.provider;
     if (savedProvider === provider && savedModel && models.includes(savedModel)) {
         modelSelect.value = savedModel;
-    }
-
-    // Show/hide context window selector for all local providers
-    if (['lmstudio', 'ollama', 'vllm', 'llama'].includes(provider)) {
-        contextWindowGroup.style.display = 'block';
-        // Restore last selected context window size for this provider
-        const savedContextWindow = localStorage.getItem(`${provider}_context_window`);
-        const slider = document.getElementById('formatContextSlider');
-        if (savedContextWindow) {
-            slider.value = savedContextWindow;
-        }
-        updateContextSliderDisplay();
-        updateModelContextInfo();
-
-        // Add change listener for model select
-        modelSelect.onchange = updateModelContextInfo;
-    } else {
-        contextWindowGroup.style.display = 'none';
     }
 }
 
@@ -1126,19 +1185,32 @@ async function handleUpload() {
         }
 
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Upload failed');
+            let errorMsg = 'Upload failed';
+            try {
+                const error = await response.json();
+                errorMsg = error.error || error.detail || 'Upload failed';
+            } catch(e) {
+                errorMsg = `Server returned ${response.status}: ${response.statusText}`;
+            }
+            throw new Error(errorMsg);
         }
 
         hideProgress();
-        bootstrap.Modal.getInstance(document.getElementById('uploadModal')).hide();
+        const uploadModal = bootstrap.Modal.getInstance(document.getElementById('uploadModal'));
+        if (uploadModal) uploadModal.hide();
         document.getElementById('uploadForm').reset();
         document.getElementById('mediaInfoPreview').style.display = 'none';
         loadUploads();
 
     } catch (error) {
         hideProgress();
-        alert('Error: ' + error.message);
+        // Show error in progress modal briefly so user can read it
+        document.getElementById('progressModalTitle').textContent = 'Upload Failed';
+        document.getElementById('progressStatus').textContent = error.message || 'Unknown error';
+        updateProgressBar(0);
+        showProgress('Upload Failed', error.message || 'Unknown error');
+        // Auto-close after 8 seconds
+        window._progressPollInterval = setTimeout(() => { hideProgress(); }, 8000);
     }
 }
 
@@ -1173,18 +1245,29 @@ async function handleTranscribe() {
         });
 
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Transcription failed');
+            let errorMsg = 'Transcription failed';
+            try {
+                const error = await response.json();
+                errorMsg = error.error || error.detail || 'Transcription failed';
+            } catch(e) {
+                errorMsg = `Server returned ${response.status}: ${response.statusText}`;
+            }
+            throw new Error(errorMsg);
         }
 
         const result = await response.json();
-        bootstrap.Modal.getInstance(document.getElementById('transcribeModal')).hide();
+        const transModal = bootstrap.Modal.getInstance(document.getElementById('transcribeModal'));
+        if (transModal) transModal.hide();
 
         // Show progress modal and poll for status
         showTranscriptionProgress(result.id);
 
     } catch (error) {
-        alert('Error: ' + error.message);
+        hideProgress();
+        document.getElementById('progressModalTitle').textContent = 'Transcription Failed';
+        document.getElementById('progressStatus').textContent = error.message || 'Unknown error';
+        showProgress('Transcription Failed', error.message || 'Unknown error');
+        window._progressPollInterval = setTimeout(() => { hideProgress(); }, 10000);
     }
 }
 
@@ -1207,28 +1290,65 @@ async function saveTranscribePreferences(provider, model) {
 async function showTranscriptionProgress(transcribeId) {
     showProgress('Transcribing...', 'This may take several minutes...');
 
-    const pollInterval = setInterval(async () => {
+    // 2-hour timeout for transcription
+    const timeoutMs = 2 * 60 * 60 * 1000;
+    const timeoutHandle = setTimeout(() => {
+        if (window._progressPollInterval) clearInterval(window._progressPollInterval);
+        hideProgress();
+        document.getElementById('progressModalTitle').textContent = 'Transcription Timed Out';
+        document.getElementById('progressStatus').textContent = 'Transcription exceeded 2 hour limit. The server may be overloaded.';
+        showProgress('Transcription Timed Out', 'Transcription exceeded 2 hour limit. The server may be overloaded.');
+        window._progressPollInterval = setTimeout(() => { hideProgress(); }, 10000);
+    }, timeoutMs);
+
+    const transcribeStart = Date.now();
+    let progressKnown = false;  // becomes true once we see progress > 0
+
+    window._progressPollInterval = setInterval(async () => {
         try {
             const response = await fetch(`/api/transcribe/${transcribeId}/status`);
             const status = await response.json();
+            const pct = status.progress || 0;
 
-            updateProgressBar(status.progress || 0);
-            document.getElementById('progressStatus').textContent =
-                `Status: ${status.status} - ${Math.round(status.progress || 0)}%`;
+            if (pct > 0 && pct < 100) progressKnown = true;
+
+            if (progressKnown) {
+                updateProgressBar(pct);
+                document.getElementById('progressStatus').textContent =
+                    `Status: ${status.status} - ${Math.round(pct)}%`;
+            } else {
+                // Progress not available from this provider (e.g. Parakeet) — show elapsed time
+                const elapsed = Math.floor((Date.now() - transcribeStart) / 1000);
+                const t = elapsed >= 60 ? Math.floor(elapsed/60) + 'm ' + (elapsed%60) + 's' : elapsed + 's';
+                updateProgressBar(0);
+                document.getElementById('progressStatus').textContent =
+                    `Transcribing... ${t} elapsed (progress % N/A for this model)`;
+            }
 
             if (status.status === 'completed' || status.status === 'error') {
-                clearInterval(pollInterval);
+                clearTimeout(timeoutHandle);
+                clearInterval(window._progressPollInterval);
+                window._progressPollInterval = null;
                 hideProgress();
                 loadUploads();
 
                 if (status.status === 'error') {
-                    alert('Transcription error: ' + (status.error_message || 'Unknown error'));
+                    const errMsg = status.error_message || 'Unknown error';
+                    document.getElementById('progressModalTitle').textContent = 'Transcription Error';
+                    document.getElementById('progressStatus').textContent = errMsg;
+                    showProgress('Transcription Error', errMsg);
+                    window._progressPollInterval = setTimeout(() => { hideProgress(); }, 10000);
                 }
             }
         } catch (error) {
-            clearInterval(pollInterval);
+            clearTimeout(timeoutHandle);
+            clearInterval(window._progressPollInterval);
+            window._progressPollInterval = null;
             hideProgress();
-            alert('Error checking status: ' + error.message);
+            document.getElementById('progressModalTitle').textContent = 'Status Check Failed';
+            document.getElementById('progressStatus').textContent = error.message || 'Could not reach server';
+            showProgress('Status Check Failed', error.message || 'Could not reach server');
+            window._progressPollInterval = setTimeout(() => { hideProgress(); }, 10000);
         }
     }, 2000);
 }
@@ -1264,33 +1384,6 @@ async function handleFormat() {
     // Build request body
     const requestBody = {transcribe_id: parseInt(transcribeId), provider, model};
 
-    // Add context window for all local providers and save to localStorage
-    if (['lmstudio', 'ollama', 'vllm', 'llama'].includes(provider)) {
-        const contextWindow = document.getElementById('formatContextSlider').value;
-        requestBody.context_length = parseInt(contextWindow);
-        localStorage.setItem(`${provider}_context_window`, contextWindow);
-
-        // Unload all models and load the selected one with context
-        try {
-            showProgress('Loading Model...', 'Unloading previous models...');
-            await fetch(`/api/${provider}/unload`, { method: 'POST' });
-
-            document.getElementById('progressStatus').textContent = 'Loading model with ' + formatTokenCount(parseInt(contextWindow)) + ' context...';
-            await fetch(`/api/${provider}/load`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    model_id: model,
-                    context_length: parseInt(contextWindow)
-                })
-            });
-            hideProgress();
-        } catch (e) {
-            console.warn('Could not reload model:', e);
-            hideProgress();
-        }
-    }
-
     try {
         const response = await fetch('/api/format', {
             method: 'POST',
@@ -1299,18 +1392,29 @@ async function handleFormat() {
         });
 
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Formatting failed');
+            let errorMsg = 'Formatting failed';
+            try {
+                const error = await response.json();
+                errorMsg = error.error || error.detail || 'Formatting failed';
+            } catch(e) {
+                errorMsg = `Server returned ${response.status}: ${response.statusText}`;
+            }
+            throw new Error(errorMsg);
         }
 
         const result = await response.json();
-        bootstrap.Modal.getInstance(document.getElementById('formatModal')).hide();
+        const fmtModal = bootstrap.Modal.getInstance(document.getElementById('formatModal'));
+        if (fmtModal) fmtModal.hide();
 
         // Show formatting progress
         showFormatProgress(result.id);
 
     } catch (error) {
-        alert('Error: ' + error.message);
+        hideProgress();
+        document.getElementById('progressModalTitle').textContent = 'Formatting Failed';
+        document.getElementById('progressStatus').textContent = error.message || 'Unknown error';
+        showProgress('Formatting Failed', error.message || 'Unknown error');
+        window._progressPollInterval = setTimeout(() => { hideProgress(); }, 10000);
     }
 }
 
@@ -1334,37 +1438,65 @@ async function showFormatProgress(contentId) {
     showProgress('Formatting...', 'Processing with LLM...');
     const startTime = Date.now();
 
-    const pollInterval = setInterval(async () => {
+    // 1-hour timeout for formatting
+    const timeoutMs = 60 * 60 * 1000;
+    const timeoutHandle = setTimeout(() => {
+        if (window._progressPollInterval) clearInterval(window._progressPollInterval);
+        hideProgress();
+        document.getElementById('progressModalTitle').textContent = 'Formatting Timed Out';
+        document.getElementById('progressStatus').textContent = 'Formatting exceeded 1 hour limit. The server may be overloaded.';
+        showProgress('Formatting Timed Out', 'Formatting exceeded 1 hour limit. The server may be overloaded.');
+        window._progressPollInterval = setTimeout(() => { hideProgress(); }, 10000);
+    }, timeoutMs);
+
+    window._progressPollInterval = setInterval(async () => {
         try {
             const response = await fetch(`/api/format/${contentId}/status`);
             const status = await response.json();
 
             if (status.status === 'completed' || status.status === 'error') {
-                clearInterval(pollInterval);
+                clearTimeout(timeoutHandle);
+                clearInterval(window._progressPollInterval);
+                window._progressPollInterval = null;
                 updateProgressBar(100);
                 hideProgress();
                 loadUploads();
 
                 if (status.status === 'error') {
-                    alert('Formatting error: ' + (status.error_message || 'Unknown error'));
+                    const errMsg = status.error_message || 'Unknown error';
+                    document.getElementById('progressModalTitle').textContent = 'Formatting Error';
+                    document.getElementById('progressStatus').textContent = errMsg;
+                    showProgress('Formatting Error', errMsg);
+                    window._progressPollInterval = setTimeout(() => { hideProgress(); }, 10000);
                 }
             } else if (status.status === 'processing') {
-                // Update progress bar with streaming progress from LLM
                 const progress = status.progress || 0;
-                updateProgressBar(progress);
                 const elapsed = Math.floor((Date.now() - startTime) / 1000);
-                const minutes = Math.floor(elapsed / 60);
-                const seconds = elapsed % 60;
-                const elapsedStr = minutes > 0
-                    ? `${minutes}m ${seconds.toString().padStart(2, '0')}s`
-                    : `${seconds}s`;
-                document.getElementById('progressStatus').textContent =
-                    `Formatting with LLM... ${Math.round(progress)}% (${elapsedStr})`;
+                const elapsedStr = elapsed >= 60
+                    ? Math.floor(elapsed/60) + 'm ' + (elapsed%60) + 's'
+                    : elapsed + 's';
+
+                if (progress > 0 && progress < 100) {
+                    // Progress available (e.g. from LLM streaming)
+                    updateProgressBar(progress);
+                    document.getElementById('progressStatus').textContent =
+                        `Formatting with LLM... ${Math.round(progress)}% (${elapsedStr})`;
+                } else {
+                    // Progress N/A — show elapsed time instead
+                    updateProgressBar(0);
+                    document.getElementById('progressStatus').textContent =
+                        `Formatting with LLM... ${elapsedStr} elapsed (progress N/A)`;
+                }
             }
         } catch (error) {
-            clearInterval(pollInterval);
+            clearTimeout(timeoutHandle);
+            clearInterval(window._progressPollInterval);
+            window._progressPollInterval = null;
             hideProgress();
-            alert('Error checking status: ' + error.message);
+            document.getElementById('progressModalTitle').textContent = 'Status Check Failed';
+            document.getElementById('progressStatus').textContent = error.message || 'Could not reach server';
+            showProgress('Status Check Failed', error.message || 'Could not reach server');
+            window._progressPollInterval = setTimeout(() => { hideProgress(); }, 10000);
         }
     }, 2000);
 }
@@ -1383,15 +1515,24 @@ async function indexContent(contentId) {
         hideProgress();
 
         if (!response.ok) {
-            const error = await response.json();
-            throw new Error(error.error || 'Indexing failed');
+            let errorMsg = 'Indexing failed';
+            try {
+                const error = await response.json();
+                errorMsg = error.error || error.detail || 'Indexing failed';
+            } catch(e) {
+                errorMsg = `Server returned ${response.status}: ${response.statusText}`;
+            }
+            throw new Error(errorMsg);
         }
 
         loadUploads();
 
     } catch (error) {
         hideProgress();
-        alert('Error: ' + error.message);
+        document.getElementById('progressModalTitle').textContent = 'Indexing Failed';
+        document.getElementById('progressStatus').textContent = error.message || 'Unknown error';
+        showProgress('Indexing Failed', error.message || 'Unknown error');
+        window._progressPollInterval = setTimeout(() => { hideProgress(); }, 8000);
     }
 }
 
@@ -1410,7 +1551,10 @@ async function removeIndex(uploadId) {
         loadUploads();
 
     } catch (error) {
-        alert('Error: ' + error.message);
+        document.getElementById('progressModalTitle').textContent = 'Remove Index Failed';
+        document.getElementById('progressStatus').textContent = error.message || 'Unknown error';
+        showProgress('Remove Index Failed', error.message || 'Unknown error');
+        window._progressPollInterval = setTimeout(() => { hideProgress(); }, 8000);
     }
 }
 
@@ -1568,25 +1712,46 @@ async function handleSearch() {
 }
 
 // Progress modal helpers
+let progressModalInstance = null;
+
 function showProgress(title, status) {
+    // Force-hide any existing instance first to prevent overlay stacking
+    if (progressModalInstance) {
+        try { progressModalInstance.hide(); } catch(e) {}
+        progressModalInstance = null;
+    }
     document.getElementById('progressModalTitle').textContent = title;
     document.getElementById('progressStatus').textContent = status;
     document.getElementById('progressContent').style.display = 'block';
     document.getElementById('streamingContent').style.display = 'none';
     updateProgressBar(0);
-    new bootstrap.Modal(document.getElementById('progressModal')).show();
+    progressModalInstance = new bootstrap.Modal(document.getElementById('progressModal'));
+    progressModalInstance.show();
 }
 
 function hideProgress() {
-    const modal = bootstrap.Modal.getInstance(document.getElementById('progressModal'));
-    if (modal) modal.hide();
+    // Clear any active polling intervals
+    if (window._progressPollInterval) {
+        clearInterval(window._progressPollInterval);
+        window._progressPollInterval = null;
+    }
+    if (progressModalInstance) {
+        try { progressModalInstance.hide(); } catch(e) {}
+        progressModalInstance = null;
+    }
+    // Safety: force-remove orphaned backdrop
+    setTimeout(() => {
+        document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
+        if (document.body.classList.contains('modal-open'))
+            document.body.classList.remove('modal-open');
+    }, 300);
 }
 
 function updateProgressBar(percent) {
     const bar = document.getElementById('progressBar');
     const text = document.getElementById('progressText');
     bar.style.width = `${percent}%`;
-    text.textContent = `${Math.round(percent)}%`;
+    text.textContent = percent >= 100 ? 'Done' : (percent > 0 ? Math.round(percent) + '%' : '...');
 }
 
 // Utility functions
@@ -2006,6 +2171,266 @@ function longestCommonSubsequence(arr1, arr2) {
 
     return lcs;
 }
+
+// ==================== WIZARD ====================
+let wizardState = { uploadId: null, transcribeId: null, contentId: null };
+
+function openWizardModal(uploadId) {
+    wizardState = { uploadId: uploadId || null, transcribeId: null, contentId: null };
+    document.getElementById('wizardFileInput').value = '';
+    document.getElementById('wizardUrlInput').value = '';
+    document.getElementById('wizardMediaIdInput').value = '';
+    document.getElementById('wizardProgressArea').style.display = 'none';
+    document.getElementById('wizardResultArea').style.display = 'none';
+    document.getElementById('wizardRunBtn').disabled = false;
+    document.getElementById('wizardRunBtn').innerHTML = '<i class="bi bi-play-fill me-1"></i>Run All';
+
+    // Show/hide source inputs depending on whether we already have an uploadId
+    const sourceDiv = document.querySelector('#wizardModal [class*=mb-4]:first-child');
+
+    // Apply saved preferences
+    const tp = document.getElementById('wizardTranscribeProvider');
+    if (userPreferences.transcribe?.provider) tp.value = userPreferences.transcribe.provider;
+    const fp = document.getElementById('wizardFormatProvider');
+    if (userPreferences.format?.provider) fp.value = userPreferences.format.provider;
+
+    updateWizardTranscribeModels();
+    updateWizardFormatModels();
+    new bootstrap.Modal(document.getElementById('wizardModal')).show();
+}
+
+function updateWizardTranscribeModels() {
+    const provider = document.getElementById('wizardTranscribeProvider').value;
+    const modelSelect = document.getElementById('wizardTranscribeModel');
+    const models = providersConfig.transcribe?.[provider]?.models || [];
+    modelSelect.innerHTML = models.map(m => `<option value="${m}">${m}</option>`).join('');
+    const saved = userPreferences.transcribe?.model;
+    if (saved && models.includes(saved)) modelSelect.value = saved;
+}
+
+function updateWizardFormatModels() {
+    const provider = document.getElementById('wizardFormatProvider').value;
+    const modelSelect = document.getElementById('wizardFormatModel');
+    const models = providersConfig.format?.[provider]?.models || [];
+    if (models.length === 0 && ['lmstudio','ollama','vllm','llama'].includes(provider)) {
+        modelSelect.innerHTML = '<option value="">Loading models...</option>';
+    } else {
+        const modelsInfo = providersConfig.format?.[provider]?.models_info || [];
+        modelSelect.innerHTML = models.map(m => {
+            const info = modelsInfo.find(i => i.id === m);
+            const ctx = info ? ` (${formatTokenCount(info.context_length)})` : '';
+            let displayName = m;
+            let priceStr = '';
+            if (provider === 'anthropic' && providersConfig.claude_models?.[m]) {
+                const ci = providersConfig.claude_models[m];
+                displayName = ci.name;
+                priceStr = ` (${ci.input}$/${ci.output}$)`;
+            }
+            return `<option value="${m}">${displayName}${priceStr}${ctx}</option>`;
+        }).join('');
+    }
+    const saved = userPreferences.format?.model;
+    const sp = userPreferences.format?.provider;
+    if (sp === provider && saved && models.includes(saved)) modelSelect.value = saved;
+}
+
+async function wizardRun() {
+    const btn = document.getElementById('wizardRunBtn');
+    btn.disabled = true;
+    document.getElementById('wizardResultArea').style.display = 'none';
+    document.getElementById('wizardProgressArea').style.display = 'block';
+    document.getElementById('wizardProgressText').textContent = 'Starting...';
+    document.getElementById('wizardProgressBar').style.width = '0%';
+
+    try {
+        // ---- STEP 1: Upload ----
+        if (!wizardState.uploadId) {
+            const fileInput = document.getElementById('wizardFileInput');
+            const urlInput = document.getElementById('wizardUrlInput');
+            const mediaIdInput = document.getElementById('wizardMediaIdInput');
+
+            document.getElementById('wizardProgressText').textContent = 'Step 1/3: Uploading...';
+
+            let response;
+            if (mediaIdInput && mediaIdInput.value) {
+                response = await fetch('/api/uploads/by-id', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({media_id: parseInt(mediaIdInput.value)})
+                });
+            } else if (fileInput.files[0]) {
+                const fd = new FormData();
+                fd.append('file', fileInput.files[0]);
+                response = await fetch('/api/uploads', { method: 'POST', body: fd });
+            } else if (urlInput.value) {
+                const fd = new FormData();
+                fd.append('url', urlInput.value);
+                response = await fetch('/api/uploads', { method: 'POST', body: fd });
+            } else {
+                throw new Error('Select a file, enter a URL, or provide a media ID');
+            }
+
+            if (!response.ok) {
+                let errMsg = 'Upload failed';
+                try { const e = await response.json(); errMsg = e.error || e.detail || errMsg; } catch(ex){}
+                throw new Error(errMsg);
+            }
+            const result = await response.json();
+            wizardState.uploadId = result.id;
+        }
+        updateWizardProgress(33);
+
+        // ---- STEP 2: Transcribe ----
+        const tProvider = document.getElementById('wizardTranscribeProvider').value;
+        const tModel = document.getElementById('wizardTranscribeModel').value;
+        saveTranscribePreferences(tProvider, tModel);
+
+        document.getElementById('wizardProgressText').textContent = 'Step 2/3: Transcribing...';
+
+        const tResponse = await fetch('/api/transcribe', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({upload_id: wizardState.uploadId, provider: tProvider, model: tModel})
+        });
+
+        if (!tResponse.ok) {
+            let errMsg = 'Transcription failed';
+            try { const e = await tResponse.json(); errMsg = e.error || e.detail || errMsg; } catch(ex){}
+            throw new Error(errMsg);
+        }
+        const tResult = await tResponse.json();
+        wizardState.transcribeId = tResult.id;
+
+        // Poll transcription
+        await wizardPollSimple(`/api/transcribe/${tResult.id}/status`, 'Transcribing...');
+
+        updateWizardProgress(66);
+
+        // ---- STEP 3: Format ----
+        const fProvider = document.getElementById('wizardFormatProvider').value;
+        const fModel = document.getElementById('wizardFormatModel').value;
+        saveFormatPreferences(fProvider, fModel);
+
+        document.getElementById('wizardProgressText').textContent = 'Step 3/3: Formatting...';
+
+        const fResponse = await fetch('/api/format', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({transcribe_id: wizardState.transcribeId, provider: fProvider, model: fModel})
+        });
+
+        if (!fResponse.ok) {
+            let errMsg = 'Formatting failed';
+            try { const e = await fResponse.json(); errMsg = e.error || e.detail || errMsg; } catch(ex){}
+            throw new Error(errMsg);
+        }
+        const fResult = await fResponse.json();
+        wizardState.contentId = fResult.id;
+
+        // Poll formatting
+        await wizardPollSimple(`/api/format/${fResult.id}/status`, 'Formatting...');
+
+        updateWizardProgress(100);
+
+        // ---- DONE ----
+        document.getElementById('wizardProgressArea').style.display = 'none';
+        document.getElementById('wizardResultArea').style.display = 'block';
+        btn.innerHTML = '<i class="bi bi-check-circle me-1"></i>Done';
+
+        // Refresh the uploads table in background
+        loadUploads();
+
+    } catch (error) {
+        document.getElementById('wizardProgressText').innerHTML =
+            '<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>' + (error.message || 'Unknown error') + '</span>';
+        document.getElementById('wizardProgressBar').className = 'progress-bar bg-danger';
+        document.getElementById('wizardProgressBar').style.width = '100%';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-play-fill me-1"></i>Retry';
+    }
+}
+
+function updateWizardProgress(pct) {
+    const bar = document.getElementById('wizardProgressBar');
+    // When pct==0 (progress N/A), show full-width animated bar as indeterminate
+    bar.style.width = (pct === 0) ? '100%' : pct + '%';
+    bar.className = 'progress-bar progress-bar-striped progress-bar-animated' + ((pct === 0) ? ' bg-info' : '');
+}
+
+async function wizardPollSimple(url, label) {
+    const timeoutMs = 2 * 60 * 60 * 1000; // 2 hours
+    const start = Date.now();
+    let progressKnown = false;
+
+    while (Date.now() - start < timeoutMs) {
+        try {
+            const response = await fetch(url);
+            const status = await response.json();
+            const pct = status.progress || 0;
+
+            if (pct > 0 && pct < 100) progressKnown = true;
+
+            if (progressKnown) {
+                document.getElementById('wizardProgressText').textContent = label + ' ' + Math.round(pct) + '%';
+                updateWizardProgress(Math.round(pct));
+            } else {
+                const elapsed = Math.floor((Date.now() - start) / 1000);
+                const t = elapsed >= 60 ? Math.floor(elapsed/60) + 'm ' + (elapsed%60) + 's' : elapsed + 's';
+                document.getElementById('wizardProgressText').textContent = label + ' ' + t + ' elapsed (progress N/A)';
+                updateWizardProgress(0);
+            }
+
+            if (status.status === 'completed') return;
+            if (status.status === 'error') throw new Error(status.error_message || 'Operation failed');
+        } catch (e) {
+            if (e.message && !e.message.startsWith('Operation failed') && !e.message.startsWith('Unknown error')) {
+                throw e; // network error etc
+            }
+            if (e.message) throw e;
+        }
+        await new Promise(r => setTimeout(r, 2000));
+    }
+    throw new Error('Operation timed out after 2 hours');
+}
+
+function wizardViewResult() {
+    if (wizardState.contentId) {
+        viewTextById('content', wizardState.contentId);
+    } else if (wizardState.transcribeId) {
+        viewTextById('transcribe', wizardState.transcribeId);
+    }
+}
+
+async function wizardIndex() {
+    if (!wizardState.contentId) return;
+    try {
+        document.getElementById('wizardProgressText').textContent = 'Indexing...';
+        document.getElementById('wizardProgressArea').style.display = 'block';
+        updateWizardProgress(0);
+
+        const response = await fetch('/api/index', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({content_id: wizardState.contentId})
+        });
+
+        updateWizardProgress(100);
+
+        if (!response.ok) {
+            let errMsg = 'Indexing failed';
+            try { const e = await response.json(); errMsg = e.error || e.detail || errMsg; } catch(ex){}
+            throw new Error(errMsg);
+        }
+
+        document.getElementById('wizardProgressText').textContent = 'Indexed successfully!';
+        loadUploads();
+    } catch (error) {
+        document.getElementById('wizardProgressText').innerHTML =
+            '<span class="text-danger"><i class="bi bi-exclamation-triangle me-1"></i>' + error.message + '</span>';
+        document.getElementById('wizardProgressBar').className = 'progress-bar bg-danger';
+    }
+}
+
 </script>
 {% endblock %}
 
