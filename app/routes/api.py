@@ -200,6 +200,10 @@ def get_goswami_media(media_id):
         if record.get('occurrence_date'):
             record['occurrence_date'] = record['occurrence_date'].isoformat()
 
+        # Handle timedelta for duration field
+        if record.get('duration') is not None and hasattr(record['duration'], 'total_seconds'):
+            record['duration'] = record['duration'].total_seconds()
+
         return jsonify(record)
 
     except ConnectionError as e:
@@ -854,4 +858,428 @@ def reset_system_prompt():
     PreferencesService.clear_system_prompt()
     return jsonify({'success': True, 'message': 'Prompt reset to default'})
 
+
+# ============ Batch Format (Goswami DB) Endpoints ============
+
+# In-memory worker state for batch formatting
+batch_format_workers = []
+batch_format_running = False
+batch_format_total = 0
+batch_format_completed = 0
+batch_format_lock = threading.Lock()
+batch_work_queue = None  # Module-level queue for worker threads
+batch_format_vllm_url = ''
+batch_format_model = ''
+
+
+@api_bp.route('/batch/media', methods=['GET'])
+def list_goswami_media():
+    """List media from Goswami DB with pagination and filters."""
+    page = request.args.get('page', 1, type=int)
+    per_page = request.args.get('per_page', 20, type=int)
+    lang = request.args.get('lang', None)
+    has_text = request.args.get('has_text', None)
+    has_transcribe_txt = request.args.get('has_transcribe_txt', None)
+    has_draft = request.args.get('has_draft', None)
+    id_filter = request.args.get('id', None)
+    title_filter = request.args.get('title', None)
+    status_filter = request.args.get('status', None)
+    order_by = request.args.get('order_by', 'id')
+    order_dir = request.args.get('order_dir', 'desc')
+
+    if has_text == 'true':
+        has_text = True
+    elif has_text == 'false':
+        has_text = False
+    elif has_text:
+        has_text = None
+
+    if has_transcribe_txt == 'true':
+        has_transcribe_txt = True
+    elif has_transcribe_txt == 'false':
+        has_transcribe_txt = False
+    elif has_transcribe_txt:
+        has_transcribe_txt = None
+
+    if has_draft == 'true':
+        has_draft = True
+    elif has_draft == 'false':
+        has_draft = False
+    elif has_draft:
+        has_draft = None
+
+    try:
+        result = GoswamiDBService.list_media(
+            page=page, per_page=per_page,
+            lang_filter=lang,
+            has_text=has_text,
+            has_transcribe_txt=has_transcribe_txt,
+            has_draft=has_draft,
+            id_filter=id_filter,
+            title_filter=title_filter,
+            status_filter=status_filter,
+            order_by=order_by,
+            order_dir=order_dir
+        )
+        return jsonify(result)
+    except ConnectionError as e:
+        return jsonify({'error': str(e)}), 503
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@api_bp.route('/batch/workers', methods=['GET'])
+def get_batch_workers():
+    """Get current worker states and batch progress."""
+    with batch_format_lock:
+        return jsonify({
+            'running': batch_format_running,
+            'workers': batch_format_workers[:],
+            'total': batch_format_total,
+            'completed': batch_format_completed
+        })
+
+
+@api_bp.route('/batch/start', methods=['POST'])
+def start_batch_format():
+    """Start batch formatting for all eligible media."""
+    global batch_format_running, batch_format_total, batch_format_completed, batch_format_workers
+    data = request.get_json() or {}
+    num_workers = data.get('workers', 1)
+
+    with batch_format_lock:
+        if batch_format_running:
+            return jsonify({'error': 'Batch formatting already running'}), 400
+
+        # Get vLLM URL and model from request or use defaults
+        vllm_url = data.get('vllm_url', '') or current_app.config.get('VLLM_BASE_URL', 'http://localhost:8000/v1')
+        model = data.get('model', '') or ''
+
+        # If no model specified, try to get from vLLM server
+        if not model:
+            models = GoswamiDBService.get_vllm_models()
+            if not models:
+                return jsonify({'error': 'No vLLM models available'}), 503
+            model = models[0]
+
+        # Store for workers
+        global batch_format_vllm_url, batch_format_model
+        batch_format_vllm_url = vllm_url
+        batch_format_model = model
+
+        pending = GoswamiDBService.get_pending_formatting_media(limit=999999)
+        if not pending:
+            return jsonify({'message': 'No media needs formatting', 'count': 0})
+
+        batch_format_running = True
+        batch_format_total = len(pending)
+        batch_format_completed = 0
+        batch_format_workers = [
+            {'id': i, 'status': 'idle', 'media_id': None, 'title': None,
+             'start_time': None, 'end_time': None, 'duration': None, 'speed': None,
+             'error': None, 'progress': None, 'media_duration': None}
+            for i in range(num_workers)
+        ]
+
+    import queue
+    batch_work_queue = queue.Queue()
+    for item in pending:
+        batch_work_queue.put(item)
+
+    # Capture app reference while still in request context
+    flask_app = current_app._get_current_object()
+
+    def worker_func(worker_id):
+        global batch_format_completed, batch_format_running, batch_format_total
+        while True:
+            try:
+                item = batch_work_queue.get(timeout=2)
+            except Exception:
+                break
+
+            media_id = item['id']
+            title = item.get('title', f'Media {media_id}')
+            transcribe_txt = item.get('transcribe_txt', '')
+            media_duration = item.get('duration')
+
+            # Convert timedelta to seconds if needed
+            if media_duration is not None and hasattr(media_duration, 'total_seconds'):
+                media_duration = media_duration.total_seconds()
+
+            with batch_format_lock:
+                for w in batch_format_workers:
+                    if w['id'] == worker_id:
+                        w['status'] = 'running'
+                        w['media_id'] = media_id
+                        w['title'] = title
+                        w['start_time'] = time.time()
+                        w['error'] = None
+                        w['progress'] = 0
+                        w['media_duration'] = media_duration
+                        break
+
+            with flask_app.app_context():
+                # Atomically claim this item to prevent race with other workers
+                if not GoswamiDBService.claim_media_for_formatting(media_id):
+                    # Another worker already claimed this item, skip it
+                    batch_work_queue.task_done()
+                    continue
+
+                start_time = time.time()
+
+                # Use streaming callback for progress tracking (same as manual formatting)
+                input_length = len(transcribe_txt)
+                received_length = [0]
+                last_progress_update = [0.0]
+
+                def batch_stream_callback(text_chunk):
+                    received_length[0] += len(text_chunk)
+                    if input_length > 0:
+                        progress = min(95.0, (received_length[0] / input_length) * 100)
+                    else:
+                        progress = 0.0
+                    # Update worker progress (throttle to every 2%)
+                    if progress - last_progress_update[0] >= 2.0:
+                        last_progress_update[0] = progress
+                        with batch_format_lock:
+                            for w in batch_format_workers:
+                                if w['id'] == worker_id:
+                                    w['progress'] = round(progress, 1)
+                                    break
+
+                try:
+                    formatted = FormatService.format_text(transcribe_txt, 'vllm', model, stream_callback=batch_stream_callback)
+                    duration = time.time() - start_time
+                    speed = len(transcribe_txt) / duration if duration > 0 else 0
+
+                    GoswamiDBService.update_draft(media_id, formatted)
+                    GoswamiDBService.update_transcribe_status(media_id, 'finished_formatting')
+
+                    with batch_format_lock:
+                        for w in batch_format_workers:
+                            if w['id'] == worker_id:
+                                w['status'] = 'idle'
+                                w['end_time'] = time.time()
+                                w['duration'] = round(duration, 2)
+                                w['speed'] = round(speed, 1)
+                                w['media_id'] = None
+                                w['title'] = None
+                                w['start_time'] = None
+                                w['progress'] = 100
+                                w['media_duration'] = None
+                                batch_format_completed += 1
+                                break
+
+                except Exception as e:
+                    duration = time.time() - start_time
+                    with batch_format_lock:
+                        for w in batch_format_workers:
+                            if w['id'] == worker_id:
+                                w['status'] = 'error'
+                                w['error'] = str(e)
+                                w['end_time'] = time.time()
+                                w['duration'] = round(duration, 2)
+                                w['media_id'] = None
+                                w['title'] = None
+                                w['start_time'] = None
+                                w['progress'] = None
+                                w['media_duration'] = None
+                                batch_format_completed += 1
+                                break
+                    try:
+                        GoswamiDBService.update_transcribe_status(media_id, None)
+                    except Exception:
+                        pass
+
+                batch_work_queue.task_done()
+
+    for i in range(num_workers):
+        t = threading.Thread(target=worker_func, args=(i,), daemon=True)
+        t.start()
+
+    return jsonify({'message': f'Started batch formatting with {num_workers} workers', 'total': batch_format_total})
+
+
+@api_bp.route('/batch/stop', methods=['POST'])
+def stop_batch_format():
+    """Stop the batch formatting process."""
+    global batch_format_running, batch_format_workers
+    with batch_format_lock:
+        if not batch_format_running:
+            return jsonify({'message': 'No batch formatting running'})
+        batch_format_running = False
+        for w in batch_format_workers:
+            w['status'] = 'stopped'
+    return jsonify({'message': 'Batch formatting stopped'})
+
+
+@api_bp.route('/batch/worker/add', methods=['POST'])
+def add_batch_worker():
+    """Add a new worker to the batch formatting pool."""
+    global batch_format_running, batch_format_workers, batch_format_completed, batch_format_total
+    data = request.get_json() or {}
+    num_new = data.get('count', 1)
+
+    with batch_format_lock:
+        if not batch_format_running:
+            return jsonify({'error': 'No batch formatting running'}), 400
+
+        new_start = len(batch_format_workers)
+        for i in range(new_start, new_start + num_new):
+            batch_format_workers.append({
+                'id': i, 'status': 'idle', 'media_id': None, 'title': None,
+                'start_time': None, 'end_time': None, 'duration': None, 'speed': None,
+                'error': None, 'progress': None, 'media_duration': None
+            })
+
+    # Capture app reference while still in request context
+    flask_app2 = current_app._get_current_object()
+
+    def new_worker_func(worker_id):
+        global batch_format_completed, batch_format_running, batch_format_total
+        while True:
+            with batch_format_lock:
+                if not batch_format_running:
+                    break
+
+            with flask_app2.app_context():
+                # Get fresh list of pending items and atomically claim one
+                item = None
+                try:
+                    pending = GoswamiDBService.get_pending_formatting_media(limit=10)
+                    for candidate in pending:
+                        if GoswamiDBService.claim_media_for_formatting(candidate['id']):
+                            item = candidate
+                            break
+                except Exception:
+                    time.sleep(2)
+                    continue
+
+                if not item:
+                    with batch_format_lock:
+                        if batch_format_completed >= batch_format_total:
+                            break
+                    time.sleep(2)
+                    continue
+                media_id = item['id']
+                title = item.get('title', f'Media {media_id}')
+                transcribe_txt = item.get('transcribe_txt', '')
+                media_duration = item.get('duration')
+
+                # Convert timedelta to seconds if needed
+                if media_duration is not None and hasattr(media_duration, 'total_seconds'):
+                    media_duration = media_duration.total_seconds()
+
+                model = batch_format_model
+                if not model:
+                    with batch_format_lock:
+                        for w in batch_format_workers:
+                            if w['id'] == worker_id:
+                                w['status'] = 'error'
+                                w['error'] = 'No model configured'
+                                break
+                    continue
+
+                with batch_format_lock:
+                    for w in batch_format_workers:
+                        if w['id'] == worker_id:
+                            w['status'] = 'running'
+                            w['media_id'] = media_id
+                            w['title'] = title
+                            w['start_time'] = time.time()
+                            w['error'] = None
+                            w['progress'] = 0
+                            w['media_duration'] = media_duration
+                            break
+
+                # Note: claim_media_for_formatting already set transcribe_status to 'started_formatting'
+
+                start_time = time.time()
+
+                # Use streaming callback for progress tracking (same as manual formatting)
+                input_length = len(transcribe_txt)
+                received_length = [0]
+                last_progress_update = [0.0]
+
+                def new_batch_stream_callback(text_chunk):
+                    received_length[0] += len(text_chunk)
+                    if input_length > 0:
+                        progress = min(95.0, (received_length[0] / input_length) * 100)
+                    else:
+                        progress = 0.0
+                    if progress - last_progress_update[0] >= 2.0:
+                        last_progress_update[0] = progress
+                        with batch_format_lock:
+                            for w in batch_format_workers:
+                                if w['id'] == worker_id:
+                                    w['progress'] = round(progress, 1)
+                                    break
+
+                try:
+                    formatted = FormatService.format_text(transcribe_txt, 'vllm', model, stream_callback=new_batch_stream_callback)
+                    duration = time.time() - start_time
+                    speed = len(transcribe_txt) / duration if duration > 0 else 0
+
+                    GoswamiDBService.update_draft(media_id, formatted)
+                    GoswamiDBService.update_transcribe_status(media_id, 'finished_formatting')
+
+                    with batch_format_lock:
+                        for w in batch_format_workers:
+                            if w['id'] == worker_id:
+                                w['status'] = 'idle'
+                                w['end_time'] = time.time()
+                                w['duration'] = round(duration, 2)
+                                w['speed'] = round(speed, 1)
+                                w['media_id'] = None
+                                w['title'] = None
+                                w['start_time'] = None
+                                w['progress'] = 100
+                                w['media_duration'] = None
+                                batch_format_completed += 1
+                                break
+
+                except Exception as e:
+                    duration = time.time() - start_time
+                    with batch_format_lock:
+                        for w in batch_format_workers:
+                            if w['id'] == worker_id:
+                                w['status'] = 'error'
+                                w['error'] = str(e)
+                                w['end_time'] = time.time()
+                                w['duration'] = round(duration, 2)
+                                w['media_id'] = None
+                                w['title'] = None
+                                w['start_time'] = None
+                                w['progress'] = None
+                                w['media_duration'] = None
+                                batch_format_completed += 1
+                                break
+                    try:
+                        GoswamiDBService.update_transcribe_status(media_id, None)
+                    except Exception:
+                        pass
+
+    for i in range(new_start, new_start + num_new):
+        t = threading.Thread(target=new_worker_func, args=(i,), daemon=True)
+        t.start()
+
+    return jsonify({'message': f'Added {num_new} workers', 'total_workers': len(batch_format_workers)})
+
+
+@api_bp.route('/batch/worker/<int:worker_id>/stop', methods=['POST'])
+def stop_single_worker(worker_id):
+    """Stop a specific worker."""
+    with batch_format_lock:
+        for w in batch_format_workers:
+            if w['id'] == worker_id:
+                w['status'] = 'stopped'
+                return jsonify({'message': f'Worker {worker_id} stopped'})
+        return jsonify({'error': f'Worker {worker_id} not found'}), 404
+
+
+@api_bp.route('/batch/vllm/models', methods=['GET'])
+def get_batch_vllm_models():
+    """Get available vLLM models for batch formatting."""
+    models = GoswamiDBService.get_vllm_models()
+    return jsonify({'models': models})
 

@@ -23,3 +23,9 @@ def view_transcription(id):
         return render_template('transcription.html', transcription=transcribe)
     abort(404)
 
+
+@main_bp.route('/media')
+def media():
+    """Media page - Goswami DB media listing with batch formatting."""
+    return render_template('media.html')
+

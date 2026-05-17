@@ -1,0 +1,631 @@
+{% extends "base.html" %}
+
+{% block title %}Media - Goswami Whisper{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* Condensed table */
+    .media-table { font-size: 0.8rem; }
+    .media-table th, .media-table td { padding: 4px 6px; vertical-align: middle; white-space: nowrap; }
+    .media-table th { background-color: #f0f0f0; border-bottom: 2px solid #dee2e6; position: sticky; top: 0; }
+    .media-table .cell-title { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .media-table .cell-duration { min-width: 70px; text-align: right; }
+    .media-table .cell-lang { text-align: center; }
+    .media-table .cell-actions { white-space: nowrap; }
+    .media-table .view-btn { padding: 1px 5px; font-size: 0.7rem; line-height: 1.2; }
+
+    /* Filter row */
+    .filter-row th { background-color: #e9ecef !important; }
+    .filter-row input:not(.form-check-input), .filter-row select { font-size: 0.75rem; padding: 2px 4px; width: 100%; }
+    .filter-row .form-check-input { margin: 0; border-radius: 0 !important; width: 1em; height: 1em; flex-shrink: 0; }
+    .filter-row .form-check { justify-content: center; }
+
+    /* Pagination */
+    .pagination-container { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; flex-wrap: wrap; gap: 10px; }
+    .page-info { font-size: 0.85rem; color: #666; }
+    .page-controls { display: flex; gap: 4px; align-items: center; }
+    .page-controls .btn { padding: 2px 8px; font-size: 0.8rem; }
+    .page-controls .page-num { padding: 2px 8px; font-size: 0.8rem; cursor: pointer; }
+    .page-controls .page-num.active { background: var(--primary-color); color: white; border-radius: 4px; }
+
+    /* Batch actions */
+    .batch-actions-card { background: #f8f9fa; border-radius: 8px; padding: 12px; margin-bottom: 15px; }
+    .batch-actions-header { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .worker-list { margin-top: 10px; }
+    .worker-item { display: flex; align-items: center; gap: 10px; padding: 6px 8px; background: white; border-radius: 6px; margin-bottom: 6px; font-size: 0.8rem; border: 1px solid #dee2e6; }
+    .worker-item.running { border-color: #0d6efd; background: #e7f1ff; }
+    .worker-item.error { border-color: #dc3545; background: #ffe7e7; }
+    .worker-item.stopped { border-color: #6c757d; background: #f0f0f0; }
+    .worker-id { font-weight: bold; min-width: 60px; }
+    .worker-task { flex: 1; min-width: 0; }
+    .worker-task-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .worker-progress { height: 14px; margin-top: 3px; border-radius: 3px; background: #e9ecef; overflow: hidden; position: relative; }
+    .worker-progress-bar { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #0d6efd, #6ea8fe); transition: width 0.3s ease; display: flex; align-items: center; justify-content: center; }
+    .worker-progress-text { font-size: 0.6rem; color: white; font-weight: 600; text-shadow: 0 0 2px rgba(0,0,0,0.4); white-space: nowrap; }
+    .worker-progress-text.outside { color: #666; text-shadow: none; position: absolute; left: 6px; top: 0; height: 100%; display: flex; align-items: center; }
+    .worker-stats { min-width: 80px; text-align: right; color: #666; white-space: nowrap; }
+    .worker-btn { padding: 1px 6px; font-size: 0.7rem; }
+
+    /* Progress bar */
+    .batch-progress { margin-top: 10px; }
+    .batch-progress .progress { height: 20px; }
+    .batch-progress-text { font-size: 0.8rem; text-align: center; margin-top: 4px; }
+
+    /* Counts */
+    .counts-bar { display: flex; gap: 15px; align-items: center; padding: 8px 0; font-size: 0.85rem; color: #555; }
+
+    /* Status badges */
+    .status-badge-sm { font-size: 0.65rem; padding: 1px 4px; }
+
+    /* Loading spinner for cells */
+    .cell-spinner { width: 12px; height: 12px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <h4 class="mb-3"><i class="bi bi-database me-2"></i>Goswami Media</h4>
+
+    <!-- Batch Actions Card -->
+    <div class="batch-actions-card">
+        <div class="batch-actions-header">
+            <div class="d-flex align-items-center gap-2 flex-wrap">
+                <button class="btn btn-sm btn-primary" id="startBatchBtn" onclick="startBatch()">
+                    <i class="bi bi-play-fill me-1"></i>Start Batch
+                </button>
+                <button class="btn btn-sm btn-danger" id="stopBatchBtn" onclick="stopBatch()" style="display:none;">
+                    <i class="bi bi-stop-fill me-1"></i>Stop
+                </button>
+                <button class="btn btn-sm btn-success" id="addWorkerBtn" onclick="addWorker()" style="display:none;">
+                    <i class="bi bi-plus-circle me-1"></i>Add Worker
+                </button>
+                <div class="d-flex align-items-center gap-1">
+                    <label class="text-muted small mb-0">URL:</label>
+                    <input type="text" list="vllmUrlList" id="vllmUrlInput" class="form-control form-control-sm" style="width:180px;font-size:0.75rem;" placeholder="http://localhost:8000/v1">
+                    <datalist id="vllmUrlList">
+                        <option value="http://localhost:8000/v1">
+                        <option value="http://localhost:8001/v1">
+                        <option value="http://localhost:8080/v1">
+                    </datalist>
+                </div>
+                <div class="d-flex align-items-center gap-1">
+                    <label class="text-muted small mb-0">Model:</label>
+                    <input type="text" list="vllmModelList" id="vllmModelInput" class="form-control form-control-sm" style="width:220px;font-size:0.75rem;" placeholder="Auto-detect">
+                    <datalist id="vllmModelList"></datalist>
+                </div>
+            </div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div class="batch-progress" id="batchProgressArea" style="display:none;">
+            <div class="progress">
+                <div class="progress-bar progress-bar-striped progress-bar-animated" id="batchProgressBar" style="width: 0%"></div>
+            </div>
+            <div class="batch-progress-text" id="batchProgressText">0 / 0</div>
+        </div>
+
+        <!-- Worker List -->
+        <div class="worker-list" id="workerList"></div>
+    </div>
+
+    <!-- Counts Bar -->
+    <div class="counts-bar">
+        <span><strong id="filteredCount">0</strong> filtered / <strong id="totalCount">0</strong> total</span>
+    </div>
+
+    <!-- Media Table -->
+    <div class="table-responsive">
+        <table class="table table-bordered table-hover media-table">
+            <thead>
+                <tr>
+                    <th style="width:50px;cursor:pointer;" onclick="toggleSort('id')">ID <span id="sort-id"></span></th>
+                    <th style="cursor:pointer;" onclick="toggleSort('title')">Title <span id="sort-title"></span></th>
+                    <th style="width:80px;cursor:pointer;" onclick="toggleSort('duration')">Duration <span id="sort-duration"></span></th>
+                    <th style="width:60px;cursor:pointer;" class="cell-lang" onclick="toggleSort('language')">Lang <span id="sort-language"></span></th>
+                    <th style="width:60px;cursor:pointer;" onclick="toggleSort('text')">Text <span id="sort-text"></span></th>
+                    <th style="width:70px;cursor:pointer;" onclick="toggleSort('transcribe_txt')">Transcribe <span id="sort-transcribe_txt"></span></th>
+                    <th style="width:60px;cursor:pointer;" onclick="toggleSort('draft')">Draft <span id="sort-draft"></span></th>
+                    <th style="width:80px;cursor:pointer;" onclick="toggleSort('status')">Status <span id="sort-status"></span></th>
+                </tr>
+                <tr class="filter-row">
+                    <th>
+                        <input type="text" class="form-control" id="filterId" placeholder="ID" onkeypress="if(event.key==='Enter')applyFilters()">
+                    </th>
+                    <th>
+                        <input type="text" class="form-control" id="filterTitle" placeholder="Title..." onkeypress="if(event.key==='Enter')applyFilters()">
+                    </th>
+                    <th>
+                        <input type="text" class="form-control" id="filterDuration" placeholder="e.g. 3600" onkeypress="if(event.key==='Enter')applyFilters()">
+                    </th>
+                    <th>
+                        <select class="form-select" id="filterLang" onchange="applyFilters()">
+                            <option value="">All</option>
+                            <option value="ENG">ENG</option>
+                            <option value="RUS">RUS</option>
+                        </select>
+                    </th>
+                    <th>
+                        <div class="form-check d-flex justify-content-center">
+                            <input class="form-check-input filter-check" type="checkbox" id="filterText" onchange="applyFilters()">
+                        </div>
+                    </th>
+                    <th>
+                        <div class="form-check d-flex justify-content-center">
+                            <input class="form-check-input filter-check" type="checkbox" id="filterTranscribeTxt" onchange="applyFilters()">
+                        </div>
+                    </th>
+                    <th>
+                        <div class="form-check d-flex justify-content-center">
+                            <input class="form-check-input filter-check" type="checkbox" id="filterDraft" onchange="applyFilters()">
+                        </div>
+                    </th>
+                    <th>
+                        <select class="form-select" id="filterStatus" onchange="applyFilters()">
+                            <option value="">All</option>
+                            <option value="pending">Pending</option>
+                            <option value="started_formatting">Formatting</option>
+                            <option value="finished_formatting">Formatted</option>
+                            <option value="started_transcribe">Transcribing</option>
+                            <option value="finished_transcribe">Transcribed</option>
+                        </select>
+                    </th>
+                </tr>
+            </thead>
+            <tbody id="mediaTableBody">
+                <tr><td colspan="8" class="text-center py-4 text-muted">Loading...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Pagination -->
+    <div class="pagination-container">
+        <div class="page-info" id="pageInfo">Page 1 of 1</div>
+        <div class="page-controls" id="pageControls"></div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// State
+let mediaItems = [];
+let currentPage = 1;
+let totalPages = 1;
+let totalFiltered = 0;
+let pollingInterval = null;
+let currentOrderBy = 'id';
+let currentOrderDir = 'desc';
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    loadVllmModels();
+    loadMedia();
+    pollWorkers();
+});
+
+// Toggle sort order when column header is clicked
+function toggleSort(col) {
+    if (currentOrderBy === col) {
+        currentOrderDir = currentOrderDir === 'asc' ? 'desc' : 'asc';
+    } else {
+        currentOrderBy = col;
+        currentOrderDir = 'asc';
+    }
+    updateSortIndicators();
+    loadMedia();
+}
+
+function updateSortIndicators() {
+    // Clear all
+    document.querySelectorAll('[id^="sort-"]').forEach(el => el.textContent = '');
+    // Set current
+    const el = document.getElementById('sort-' + currentOrderBy);
+    if (el) el.textContent = currentOrderDir === 'asc' ? '▲' : '▼';
+}
+
+// Load vLLM models into datalist
+async function loadVllmModels() {
+    try {
+        const resp = await fetch('/api/batch/vllm/models');
+        const data = await resp.json();
+        const datalist = document.getElementById('vllmModelList');
+        if (data.models && data.models.length > 0) {
+            datalist.innerHTML = data.models.map(m => `<option value="${escapeHtml(m)}">`).join('');
+            // Pre-fill model input if empty
+            const modelInput = document.getElementById('vllmModelInput');
+            if (!modelInput.value && data.models.length > 0) {
+                modelInput.value = data.models[0];
+            }
+        }
+    } catch(e) {
+        // vLLM unavailable — user can still type manually
+    }
+}
+
+// Load media with current filters
+async function loadMedia() {
+    const params = new URLSearchParams();
+    params.set('page', currentPage);
+    params.set('per_page', 20);
+
+    // ID filter (exact match, server-side)
+    const id = document.getElementById('filterId').value.trim();
+    if (id) params.set('id', id);
+
+    // Title filter (partial match, server-side)
+    const title = document.getElementById('filterTitle').value.trim();
+    if (title) params.set('title', title);
+
+    // Language filter
+    const lang = document.getElementById('filterLang').value;
+    if (lang) params.set('lang', lang);
+
+    // Status filter
+    const status = document.getElementById('filterStatus').value;
+    if (status) params.set('status', status);
+
+    // Ordering
+    params.set('order_by', currentOrderBy);
+    params.set('order_dir', currentOrderDir);
+
+    // Checkbox filters (only "has" = checked means true)
+    if (document.getElementById('filterText').checked) params.set('has_text', 'true');
+    if (document.getElementById('filterTranscribeTxt').checked) params.set('has_transcribe_txt', 'true');
+    if (document.getElementById('filterDraft').checked) params.set('has_draft', 'true');
+
+    try {
+        const resp = await fetch('/api/batch/media?' + params.toString());
+        const data = await resp.json();
+        if (data.error) {
+            document.getElementById('mediaTableBody').innerHTML = `<tr><td colspan="8" class="text-center py-4 text-danger">${escapeHtml(data.error)}</td></tr>`;
+            return;
+        }
+        mediaItems = data.items || [];
+        totalPages = data.pages || 1;
+        totalFiltered = data.total || 0;
+
+        document.getElementById('filteredCount').textContent = totalFiltered;
+        document.getElementById('totalCount').textContent = totalFiltered;
+
+        renderTable();
+        renderPagination();
+    } catch(e) {
+        document.getElementById('mediaTableBody').innerHTML = `<tr><td colspan="8" class="text-center py-4 text-danger">Error: ${escapeHtml(e.message)}</td></tr>`;
+    }
+}
+
+// Apply filters (all server-side now)
+function applyFilters() {
+    currentPage = 1;
+    loadMedia();
+}
+
+// Render table
+function renderTable() {
+    const tbody = document.getElementById('mediaTableBody');
+
+    // No more client-side filtering — all done server-side
+    let items = mediaItems;
+
+    if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="text-center py-4 text-muted">No records found</td></tr>';
+        return;
+    }
+
+    let html = '';
+    items.forEach(m => {
+        const title = escapeHtml(m.title || '-');
+        const duration = formatDuration(m.duration);
+        const lang = m.language || '-';
+        const hasText = !!m.text;
+        const hasTranscribeTxt = !!m.transcribe_txt;
+        const hasDraft = !!m.draft;
+
+        const viewBtn = (id, field) => `<button class="btn btn-outline-info view-btn" onclick="viewText(${id},'${field}')"><i class="bi bi-eye"></i></button>`;
+        const emptySpan = '<span class="text-muted">-</span>';
+
+        html += `<tr>
+            <td class="fw-bold">${m.id}</td>
+            <td class="cell-title" title="${title}">${title}</td>
+            <td class="cell-duration">${duration}</td>
+            <td class="cell-lang"><span class="badge bg-secondary status-badge-sm">${escapeHtml(lang)}</span></td>
+            <td class="text-center">${hasText ? viewBtn(m.id, 'text') : emptySpan}</td>
+            <td class="text-center">${hasTranscribeTxt ? viewBtn(m.id, 'transcribe_txt') : emptySpan}</td>
+            <td class="text-center">${hasDraft ? viewBtn(m.id, 'draft') : emptySpan}</td>
+            <td class="cell-actions">
+                <span class="badge status-badge-sm ${getStatusClass(m.transcribe_status)}">${escapeHtml(m.transcribe_status || 'pending')}</span>
+            </td>
+        </tr>`;
+    });
+
+    tbody.innerHTML = html;
+}
+
+// Render pagination
+function renderPagination() {
+    document.getElementById('pageInfo').textContent = `Page ${currentPage} of ${totalPages}`;
+
+    const controls = document.getElementById('pageControls');
+    if (totalPages <= 1) {
+        controls.innerHTML = '';
+        return;
+    }
+
+    let html = '';
+    html += `<button class="btn btn-outline-secondary btn-sm" onclick="goToPage(${currentPage - 1})" ${currentPage <= 1 ? 'disabled' : ''}><i class="bi bi-chevron-left"></i></button>`;
+
+    // Show limited page numbers
+    let startPage = Math.max(1, currentPage - 2);
+    let endPage = Math.min(totalPages, currentPage + 2);
+
+    if (startPage > 1) {
+        html += `<span class="page-num" onclick="goToPage(1)">1</span>`;
+        if (startPage > 2) html += '<span class="text-muted px-1">...</span>';
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+        html += `<span class="page-num ${i === currentPage ? 'active' : ''}" onclick="goToPage(${i})">${i}</span>`;
+    }
+
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) html += '<span class="text-muted px-1">...</span>';
+        html += `<span class="page-num" onclick="goToPage(${totalPages})">${totalPages}</span>`;
+    }
+
+    html += `<button class="btn btn-outline-secondary btn-sm" onclick="goToPage(${currentPage + 1})" ${currentPage >= totalPages ? 'disabled' : ''}><i class="bi bi-chevron-right"></i></button>`;
+
+    controls.innerHTML = html;
+}
+
+function goToPage(page) {
+    if (page < 1 || page > totalPages) return;
+    currentPage = page;
+    loadMedia();
+}
+
+// View text modal
+function viewText(mediaId, field) {
+    // Fetch the record to get the text
+    fetch('/api/goswami/media/' + mediaId)
+        .then(r => r.json())
+        .then(data => {
+            const text = data[field] || '(empty)';
+            const fieldNames = {text: 'Text', transcribe_txt: 'Transcription', draft: 'Draft'};
+            const title = `Media #${mediaId} - ${fieldNames[field] || field}`;
+
+            // Create/show modal
+            let modalEl = document.getElementById('viewMediaModal');
+            if (!modalEl) {
+                modalEl = document.createElement('div');
+                modalEl.id = 'viewMediaModal';
+                modalEl.className = 'modal fade';
+                modalEl.tabIndex = -1;
+                modalEl.innerHTML = `
+                    <div class="modal-dialog modal-xl">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="viewMediaModalTitle">View</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body">
+                                <pre id="viewMediaModalContent" style="max-height:70vh; overflow-y:auto; white-space:pre-wrap; font-family:monospace; font-size:0.85rem;"></pre>
+                            </div>
+                            <div class="modal-footer">
+                                <button type="button" class="btn btn-sm btn-primary" onclick="downloadModalContent()">
+                                    <i class="bi bi-download me-1"></i>Download
+                                </button>
+                                <button type="button" class="btn btn-sm btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                        </div>
+                    </div>`;
+                document.body.appendChild(modalEl);
+            }
+            document.getElementById('viewMediaModalTitle').textContent = title;
+            document.getElementById('viewMediaModalContent').textContent = text;
+            const bsModal = new bootstrap.Modal(modalEl);
+            bsModal.show();
+        })
+        .catch(e => alert('Error loading media: ' + e.message));
+}
+
+// Batch formatting
+async function startBatch() {
+    try {
+        const vllmUrl = document.getElementById('vllmUrlInput').value.trim();
+        const model = document.getElementById('vllmModelInput').value.trim();
+        const resp = await fetch('/api/batch/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({workers: 1, vllm_url: vllmUrl || undefined, model: model || undefined})
+        });
+        const data = await resp.json();
+        if (data.error) {
+            alert(data.error);
+            return;
+        }
+        document.getElementById('startBatchBtn').style.display = 'none';
+        document.getElementById('stopBatchBtn').style.display = '';
+        document.getElementById('addWorkerBtn').style.display = '';
+        document.getElementById('batchProgressArea').style.display = '';
+        pollWorkers();
+    } catch(e) {
+        alert('Error starting batch: ' + e.message);
+    }
+}
+
+async function stopBatch() {
+    try {
+        await fetch('/api/batch/stop', {method: 'POST'});
+        document.getElementById('startBatchBtn').style.display = '';
+        document.getElementById('stopBatchBtn').style.display = 'none';
+        document.getElementById('addWorkerBtn').style.display = 'none';
+    } catch(e) {
+        alert('Error stopping batch: ' + e.message);
+    }
+}
+
+async function addWorker() {
+    try {
+        await fetch('/api/batch/worker/add', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({count: 1})
+        });
+    } catch(e) {
+        alert('Error adding worker: ' + e.message);
+    }
+}
+
+async function stopWorker(workerId) {
+    try {
+        await fetch('/api/batch/worker/' + workerId + '/stop', {method: 'POST'});
+    } catch(e) {
+        alert('Error stopping worker: ' + e.message);
+    }
+}
+
+// Poll workers
+function pollWorkers() {
+    if (pollingInterval) clearInterval(pollingInterval);
+    pollingInterval = setInterval(updateWorkers, 2000);
+    updateWorkers();
+}
+
+async function updateWorkers() {
+    try {
+        const resp = await fetch('/api/batch/workers');
+        const data = await resp.json();
+
+        const list = document.getElementById('workerList');
+        if (!data.workers || data.workers.length === 0) {
+            list.innerHTML = '';
+            return;
+        }
+
+        let html = '';
+        data.workers.forEach(w => {
+            const statusClass = w.status === 'running' ? 'running' : (w.status === 'error' ? 'error' : (w.status === 'stopped' ? 'stopped' : ''));
+            let taskText = 'Idle';
+            let statsText = '';
+            let progressHtml = '';
+
+            if (w.status === 'running' && w.media_id) {
+                const mediaDur = w.media_duration ? formatDuration(w.media_duration) : '';
+                taskText = `#${w.media_id} - ${escapeHtml(w.title || '')}${mediaDur ? ' [' + mediaDur + ']' : ''}`;
+                const elapsed = w.start_time ? ((Date.now() / 1000) - w.start_time) : 0;
+                statsText = formatDuration(elapsed);
+                const pctVal = w.progress != null ? w.progress : 0;
+                const pctRound = Math.round(pctVal);
+                // Calculate speed multiplier (media_duration / elapsed)
+                let speedText = '';
+                if (w.media_duration && elapsed > 2) {
+                    const speedX = (w.media_duration / elapsed).toFixed(0);
+                    speedText = ` / ${speedX}x`;
+                }
+                const barLabel = `${pctRound}%${speedText}`;
+                // Progress bar with text inside
+                progressHtml = `<div class="worker-progress">
+                    <div class="worker-progress-bar" style="width:${pctVal}%">
+                        ${pctVal > 20 ? `<span class="worker-progress-text">${barLabel}</span>` : ''}
+                    </div>
+                    ${pctVal <= 20 ? `<span class="worker-progress-text outside">${barLabel}</span>` : ''}
+                </div>`;
+            } else if (w.error) {
+                taskText = `Error: ${escapeHtml(w.error).substring(0, 80)}`;
+                if (w.media_id) taskText = `#${w.media_id} - ${escapeHtml(w.title || '')} (Error: ${escapeHtml(w.error).substring(0, 50)})`;
+                if (w.duration !== null && w.duration !== undefined) {
+                    statsText = `${w.duration}s | ${w.speed || 0} chars/s`;
+                }
+            } else if (w.duration !== null && w.duration !== undefined) {
+                taskText = `#${w.media_id || '?'} - ${escapeHtml(w.title || '')}`;
+                statsText = `${w.duration}s | ${w.speed || 0} chars/s`;
+                if (w.error) {
+                    taskText += ` (Error: ${escapeHtml(w.error).substring(0, 50)})`;
+                }
+            }
+
+            html += `
+            <div class="worker-item ${statusClass}">
+                <span class="worker-id">Worker ${w.id}</span>
+                <span class="worker-task">
+                    <div class="worker-task-text">${taskText}</div>
+                    ${progressHtml || ''}
+                </span>
+                <span class="worker-stats">${statsText}</span>
+                ${w.status === 'running' ? `<button class="btn btn-outline-danger worker-btn" onclick="stopWorker(${w.id})"><i class="bi bi-stop"></i></button>` : ''}
+            </div>`;
+        });
+        list.innerHTML = html;
+
+        // Update progress
+        const progressArea = document.getElementById('batchProgressArea');
+        if (data.running || data.workers.some(w => w.status === 'running')) {
+            progressArea.style.display = '';
+            const pct = data.total > 0 ? Math.round((data.completed / data.total) * 100) : 0;
+            document.getElementById('batchProgressBar').style.width = pct + '%';
+            document.getElementById('batchProgressBar').textContent = pct + '%';
+            document.getElementById('batchProgressText').textContent = `${data.completed} / ${data.total}`;
+
+            // Show/hide controls
+            document.getElementById('startBatchBtn').style.display = 'none';
+            document.getElementById('stopBatchBtn').style.display = '';
+            document.getElementById('addWorkerBtn').style.display = '';
+        } else {
+            // Check if batch completed
+            if (data.completed > 0 && data.total > 0) {
+                progressArea.style.display = '';
+                document.getElementById('batchProgressBar').style.width = '100%';
+                document.getElementById('batchProgressBar').textContent = '100%';
+                document.getElementById('batchProgressText').textContent = `Completed: ${data.completed} / ${data.total}`;
+            }
+            document.getElementById('startBatchBtn').style.display = '';
+            document.getElementById('stopBatchBtn').style.display = 'none';
+            document.getElementById('addWorkerBtn').style.display = 'none';
+        }
+    } catch(e) {
+        // Silent fail on poll
+    }
+}
+
+// Download modal content as .txt file
+function downloadModalContent() {
+    const text = document.getElementById('viewMediaModalContent').textContent;
+    const title = document.getElementById('viewMediaModalTitle').textContent;
+    const filename = title.replace(/[^a-zA-Z0-9а-яА-ЯёЁ\s-]/g, '').trim().replace(/\s+/g, '_') + '.txt';
+    const blob = new Blob([text], {type: 'text/plain;charset=utf-8'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// Helpers
+function escapeHtml(str) {
+    if (!str) return '';
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+}
+
+function formatDuration(seconds) {
+    if (!seconds || seconds <= 0) return '-';
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    if (h > 0) return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    return `${m}:${String(s).padStart(2,'0')}`;
+}
+
+function getStatusClass(status) {
+    if (!status) return 'bg-secondary';
+    if (status.includes('finished')) return 'bg-success';
+    if (status.includes('started')) return 'bg-warning text-dark';
+    if (status.includes('error')) return 'bg-danger';
+    return 'bg-secondary';
+}
+</script>
+{% endblock %}

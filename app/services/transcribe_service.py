@@ -369,7 +369,12 @@ class TranscribeService:
         model_name: str,
         progress_callback=None
     ) -> str:
-        """Transcribe using NVIDIA Parakeet via its local OpenAI-compatible API."""
+        """Transcribe using NVIDIA Parakeet via its local OpenAI-compatible API.
+
+        Splits long audio into chunks and sends each chunk separately,
+        providing progress updates after each chunk completes.
+        """
+        import tempfile
         from flask import current_app
 
         parakeet_models = [
@@ -385,30 +390,100 @@ class TranscribeService:
         if model_name == "grikdotnet/parakeet-tdt-0.6b-fp16":
             parakeet_host = current_app.config.get("PARAKEET_GPU_HOST", "http://localhost:5093")
 
-        # Parakeet is a blocking HTTP call — no progress info available from the API.
-        # We set progress=0 to signal the UI that percentage-based progress is N/A.
+        # Get audio duration to decide if we need chunking
+        total_duration = TranscribeService.get_audio_duration(file_path)
+        chunk_duration = 90  # seconds per chunk — matches parakeet server's internal chunking
+
+        print(f"Starting Parakeet transcription ({model_name}) for: {file_path} ({total_duration:.0f}s)")
+
         if progress_callback:
             progress_callback(0.0)
-
-        print(f"Starting Parakeet transcription ({model_name}) for: {file_path}")
 
         client = OpenAI(
             base_url=f"{parakeet_host}/v1",
             api_key="sk-no-key-required",
         )
 
-        with open(file_path, "rb") as audio_file:
-            response = client.audio.transcriptions.create(
-                model=model_name,
-                file=audio_file,
-                response_format="text",
-            )
+        # If audio is short enough, send in one request
+        if total_duration <= 0 or total_duration <= chunk_duration:
+            with open(file_path, "rb") as audio_file:
+                response = client.audio.transcriptions.create(
+                    model=model_name,
+                    file=audio_file,
+                    response_format="text",
+                )
+            if progress_callback:
+                progress_callback(100.0)
+            print("Parakeet transcription complete (single chunk)")
+            return response
+
+        # For long audio: split into chunks with ffmpeg and transcribe each
+        num_chunks = int(total_duration / chunk_duration) + (1 if total_duration % chunk_duration > 0 else 0)
+        print(f"Splitting into {num_chunks} chunks for progress tracking")
+
+        all_text = []
+        tmpdir = tempfile.mkdtemp(prefix="parakeet_chunks_")
+        chunk_files = []
+
+        try:
+            # Create chunk files with ffmpeg
+            for i in range(num_chunks):
+                start_offset = i * chunk_duration
+                chunk_path = os.path.join(tmpdir, f"chunk_{i:04d}.wav")
+                result = subprocess.run(
+                    [
+                        "ffmpeg", "-nostdin", "-y", "-loglevel", "error",
+                        "-ss", str(start_offset),
+                        "-t", str(chunk_duration),
+                        "-i", file_path,
+                        "-ac", "1", "-ar", "16000", "-c:a", "pcm_s16le",
+                        chunk_path
+                    ],
+                    capture_output=True, text=True
+                )
+                if result.returncode == 0 and os.path.exists(chunk_path):
+                    chunk_files.append(chunk_path)
+                else:
+                    print(f"Warning: ffmpeg failed for chunk {i+1}/{num_chunks}: {result.stderr}")
+
+            # Transcribe each chunk
+            actual_chunks = len(chunk_files)
+            for i, chunk_path in enumerate(chunk_files):
+                print(f"Transcribing chunk {i+1}/{actual_chunks}...")
+                try:
+                    with open(chunk_path, "rb") as audio_file:
+                        chunk_text = client.audio.transcriptions.create(
+                            model=model_name,
+                            file=audio_file,
+                            response_format="text",
+                        )
+                    if chunk_text:
+                        all_text.append(chunk_text.strip())
+                except Exception as e:
+                    print(f"Warning: chunk {i+1}/{actual_chunks} failed: {e}")
+
+                # Report progress after each chunk
+                if progress_callback:
+                    progress = ((i + 1) / actual_chunks) * 100
+                    progress_callback(min(progress, 99.0))
+
+        finally:
+            # Cleanup chunk files
+            for cp in chunk_files:
+                try:
+                    os.remove(cp)
+                except OSError:
+                    pass
+            try:
+                os.rmdir(tmpdir)
+            except OSError:
+                pass
 
         if progress_callback:
             progress_callback(100.0)
 
-        print("Parakeet transcription complete")
-        return response
+        print(f"Parakeet transcription complete ({actual_chunks} chunks)")
+        return " ".join(all_text)
 
     @staticmethod
     def download_from_url(url: str, output_dir: str) -> str:
